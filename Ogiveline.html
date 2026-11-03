@@ -1,0 +1,333 @@
+<!-- Ogive Line Plotter -->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MathForge — Ogive Plotter</title>
+
+  <link rel="stylesheet" href="assets/css/common.css">
+  <script src="assets/js/common.js"></script>
+
+  <style>
+    .tableCard{
+      margin-top:12px;
+      background:linear-gradient(180deg, rgba(19,32,53,0.96), rgba(11,18,31,0.96));
+      border:1px solid rgba(148,163,184,0.22);
+      border-radius:18px;
+      overflow:hidden;
+      box-shadow:0 18px 42px rgba(1,5,12,0.28);
+    }
+    .sheetTitle{
+      padding:12px 14px;
+      border-bottom:1px solid rgba(148,163,184,0.18);
+      display:flex; gap:10px; justify-content:space-between; align-items:center;
+      font-weight:800;
+      background:rgba(255,255,255,0.02);
+    }
+    .sheetTitle small{ font-weight:650; color:rgba(255,255,255,0.72); }
+    .sheetWrap{ padding:12px 14px; }
+
+    .paperTable{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      table-layout:fixed;
+      border:1px solid rgba(148,163,184,0.18);
+      border-radius:14px;
+      overflow:hidden;
+      background:rgba(0,0,0,0.18);
+    }
+    .paperTable thead th{
+      font-size:12px;
+      color:rgba(255,255,255,0.82);
+      background:rgba(255,255,255,0.06);
+      border-bottom:1px solid rgba(148,163,184,0.18);
+      padding:10px 8px;
+      text-align:center;
+      font-weight:800;
+    }
+    .paperTable tbody td{
+      border-bottom:1px solid rgba(148,163,184,0.12);
+      border-right:1px solid rgba(148,163,184,0.12);
+      padding:0;
+    }
+    .paperTable tbody tr:last-child td{ border-bottom:none; }
+    .paperTable tbody td:last-child{ border-right:none; }
+
+    .rowIndex{
+      width:44px;
+      text-align:center;
+      color:rgba(255,255,255,0.68);
+      font-size:12px;
+      font-weight:800;
+      background:rgba(255,255,255,0.04);
+    }
+    .cellInput{
+      width:100%;
+      padding:10px 8px;
+      border:0;
+      outline:none;
+      background:transparent;
+      color:#edf5ff;
+      font-size:14px;
+      font-weight:650;
+      text-align:center;
+    }
+    .cellInput:focus{
+      background:rgba(91,224,160,0.08);
+      box-shadow: inset 0 0 0 2px rgba(91,224,160,0.35);
+    }
+    .sheetBtns{
+      margin-top:10px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .sheetHint{
+      margin-top:8px;
+      color:rgba(255,255,255,0.72);
+      font-size:12px;
+      line-height:1.45;
+    }
+
+    .wrap{ align-items:start; }
+
+    @media (min-width: 1101px){
+      .wrap > .card:first-child{
+        position: sticky;
+        top: 86px;
+      }
+      .wrap > .card:first-child .body{
+        max-height: calc(100vh - 120px);
+        overflow: auto;
+        padding-right: 10px;
+      }
+    }
+
+    .wrap > .card:first-child .body::-webkit-scrollbar{ width: 10px; }
+    .wrap > .card:first-child .body::-webkit-scrollbar-thumb{
+      background: rgba(255,255,255,0.18);
+      border-radius: 999px;
+    }
+    .wrap > .card:first-child .body::-webkit-scrollbar-track{
+      background: rgba(0,0,0,0.12);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="topbarInner">
+      <div class="brand">
+        MathForge
+        <span>Ogive (Cumulative Frequency Curve)</span>
+      </div>
+      <div>
+        <button class="good" onclick="location.href='index.html'">← Back</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page">
+    <div class="wrap">
+
+      <div class="card">
+        <h2>
+          Ogive (Cumulative Frequency Curve)
+          <span class="pill">table input • drag points • pan/zoom • FIT</span>
+        </h2>
+
+        <div class="body">
+
+          <div class="tableCard">
+            <div class="sheetTitle">
+              <div>Ogive — Table Input</div>
+              <small>Drag dots to change CF</small>
+            </div>
+
+            <div class="sheetWrap">
+              <div class="sheetBtns">
+                <button id="o_addRow">+ Row</button>
+                <button id="o_delRow">− Row</button>
+                <button class="good" id="o_useTable">Use Table → Draw</button>
+              </div>
+
+              <table class="paperTable" id="o_table">
+                <thead>
+                  <tr>
+                    <th class="rowIndex">#</th>
+                    <th>Lower Boundary</th>
+                    <th>Upper Boundary</th>
+                    <th>Frequency or Cumulative Freq</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+
+              <div class="sheetHint">
+                ✅ Paste works (tab/newline).<br/>
+                ✅ Dragging a dot changes only the <b>cumulative frequency (Y)</b>. X stays fixed at upper boundary.
+              </div>
+              <label class="small" for="o_inputMode">Table values</label>
+              <select id="o_inputMode">
+                <option value="cf" selected>Cumulative frequencies</option>
+                <option value="frequency">Class frequencies (calculate cumulative)</option>
+              </select>
+              <div id="o_tableError" class="small" role="alert" style="display:none;color:#ff9b9b;"></div>
+
+              <textarea id="o_data" style="display:none;">49.5,54.5,1
+54.5,59.5,3
+59.5,64.5,6</textarea>
+            </div>
+          </div>
+
+          <div class="two">
+            <label style="display:flex;align-items:center;gap:10px;">
+              <input id="o_showDots" type="checkbox" checked />
+              <span style="color:var(--muted);font-size:13px;">Show dots</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;">
+              <input id="o_showPointLabels" type="checkbox" />
+              <span style="color:var(--muted);font-size:13px;">Show point labels</span>
+            </label>
+          </div>
+
+          <div class="row">
+            <label>Zoom</label>
+            <input id="o_zoom" type="range" min="0.35" max="4.0" value="1.00" step="0.05" />
+            <div class="val" id="o_zoomVal"></div>
+          </div>
+
+          <div class="two">
+            <div>
+              <label style="color:var(--muted);font-size:13px;">Minor square (px)</label>
+              <input id="o_minorPx" type="number" value="10" min="4" step="1" />
+            </div>
+            <div>
+              <label style="color:var(--muted);font-size:13px;">Major every (squares)</label>
+              <input id="o_majorEvery" type="number" value="5" min="2" step="1" />
+            </div>
+          </div>
+
+          <div class="two">
+            <div>
+              <label style="color:var(--muted);font-size:13px;">Y labels step</label>
+              <input id="o_yLabelStep" type="number" value="5" min="1" step="1" />
+            </div>
+            <div>
+              <label style="color:var(--muted);font-size:13px;">Curve thickness</label>
+              <input id="o_curveW" type="number" value="4" min="1" max="10" step="1" />
+            </div>
+          </div>
+
+          <div class="two">
+            <div>
+              <label style="color:var(--muted);font-size:13px;">Canvas (w,h)</label>
+              <input id="o_csize" value="980,600" />
+            </div>
+            <div>
+              <label style="color:var(--muted);font-size:13px;">Origin (ox,oy)</label>
+              <input id="o_origin" value="170,500" />
+            </div>
+          </div>
+
+          <div class="two">
+            <div>
+              <label style="color:var(--muted);font-size:13px;">X: squares per 1 unit</label>
+              <input id="o_xSmallPerUnit" type="number" value="1" min="1" step="1" />
+            </div>
+            <div>
+              <label style="color:var(--muted);font-size:13px;">Y: squares per 1 unit</label>
+              <input id="o_ySmallPerUnit" type="number" value="1" min="1" step="1" />
+            </div>
+          </div>
+
+          <div class="section">Axis annotations</div>
+
+          <!-- ✅ Renamed from h_* to o_* (this is the ogive tool, not histogram) -->
+          <div class="two">
+            <div>
+              <label style="color:var(--muted);font-size:13px;">X-axis label text</label>
+              <input id="o_xLabelText" value="অবিচ্ছিন্ন শ্রেনীসীমা →" />
+            </div>
+            <div>
+              <label style="color:var(--muted);font-size:13px;">Y-axis label text</label>
+              <input id="o_yLabelText" value="ক্রমযোজিত গণসংখ্যা →" />
+            </div>
+          </div>
+
+          <div class="two">
+            <label style="display:flex;align-items:center;gap:10px;">
+              <input id="o_showAxisLabels" type="checkbox" checked />
+              <span style="color:var(--muted);font-size:13px;">Show axis labels</span>
+            </label>
+            <label style="display:flex;align-items:center;gap:10px;">
+              <input id="o_axisLabelArrows" type="checkbox" checked />
+              <span style="color:var(--muted);font-size:13px;">Include arrow (↑ / →)</span>
+            </label>
+          </div>
+
+          <div class="row">
+            <label>Axis label font size</label>
+            <input id="o_fontAxisLabel" type="range" min="10" max="40" value="18" step="1" />
+            <div class="val" id="o_fontAxisLabelVal"></div>
+          </div>
+
+          <div class="two">
+            <div>
+              <label style="color:var(--muted);font-size:13px;">X label offset (px)</label>
+              <input id="o_xLabelOffset" type="number" value="45" />
+            </div>
+            <div>
+              <label style="color:var(--muted);font-size:13px;">Y label offset (px)</label>
+              <input id="o_yLabelOffset" type="number" value="55" />
+            </div>
+          </div>
+
+          <div class="section">Font sizes</div>
+          <div class="row">
+            <label>Axis letters (X,Y,O)</label>
+            <input id="o_fontAxis" type="range" min="10" max="40" value="16" step="1" />
+            <div class="val" id="o_fontAxisVal"></div>
+          </div>
+          <div class="row">
+            <label>Tick labels (numbers)</label>
+            <input id="o_fontTicks" type="range" min="10" max="34" value="14" step="1" />
+            <div class="val" id="o_fontTicksVal"></div>
+          </div>
+          <div class="row">
+            <label>Point labels</label>
+            <input id="o_fontPoint" type="range" min="10" max="34" value="12" step="1" />
+            <div class="val" id="o_fontPointVal"></div>
+          </div>
+
+          <div class="hint">
+            Drag a dot to edit cumulative frequency. We auto-enforce: CF is non-decreasing and ≥ 0.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Graph <span class="pill">ogive curve</span></h2>
+          <div class="btns" style="padding-left: 20px;">
+            <button id="o_resetBtn" type="button">Reset</button>
+            <button id="o_fitBtn">Fit</button>
+            <button class="good" id="o_pngBtn">PNG</button>
+            <button class="good" id="o_svgBtn">SVG</button>
+          </div>
+        <div class="canvasWrap">
+          <canvas id="o_cv" width="980" height="600"></canvas>
+          <div class="small">Pan by dragging empty area. Drag dot to edit CF. Zoom with wheel.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script src="assets/js/tools/ogive-engine.js"></script>
+
+</body>
+</html>

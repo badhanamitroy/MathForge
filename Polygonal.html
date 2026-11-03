@@ -1,0 +1,498 @@
+<!-- Polygonal Plotter -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MathForge — Histogram and Frequency Polygon</title>
+  <link rel="stylesheet" href="assets/css/common.css">
+  <script src="assets/js/common.js"></script>
+
+  <style>
+    :root{
+      --bg-900:#070d18;
+      --bg-800:#0d1628;
+      --text:#edf5ff;
+      --muted:#bfd3f8;
+      --stroke: rgba(148,163,184,0.24);
+      --card: rgba(17,26,51,0.96);
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family:Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(81,132,255,0.15), transparent 24%),
+        linear-gradient(180deg, var(--bg-900), var(--bg-800));
+      color:var(--text);
+      min-height:100vh;
+      line-height:1.5;
+    }
+    .topbar{
+      position:sticky; top:0; z-index:50;
+      backdrop-filter: blur(12px);
+      background:rgba(8,14,24,0.72);
+      border-bottom:1px solid rgba(255,255,255,0.08);
+    }
+    .topbarInner{
+      width:min(1400px,96vw);
+      margin:0 auto;
+      padding:12px 0;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+    }
+    .brand{
+      display:flex; gap:10px; align-items:center;
+      font-weight:800; letter-spacing:.02em;
+    }
+    .brand span{
+      display:inline-block;
+      padding:6px 10px;
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius:999px;
+      background:rgba(255,255,255,0.04);
+      font-size:12px;
+      color:var(--muted);
+      font-weight:700;
+    }
+
+    .page{
+      width:min(1400px,96vw);
+      margin:0 auto;
+      padding:20px 0 32px;
+    }
+    .wrap{
+      width:100%;
+      display:grid;
+      grid-template-columns: 560px 1fr;
+      gap:18px;
+      align-items:start;
+    }
+    @media (max-width: 1100px){
+      .wrap{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      background:linear-gradient(180deg, rgba(18,30,49,0.96), rgba(13,22,37,0.96));
+      border:1px solid var(--stroke);
+      border-radius:18px;
+      box-shadow:0 18px 42px rgba(1,5,12,0.38);
+      overflow:hidden;
+    }
+    .card h2{
+      margin:0; padding:15px 18px; font-size:1rem;
+      border-bottom:1px solid var(--stroke);
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      background:rgba(255,255,255,0.02);
+    }
+    .pill{
+      font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+      color:var(--muted);
+      border:1px solid var(--stroke);
+      padding:6px 10px; border-radius:999px;
+      background:rgba(255,255,255,0.04);
+      white-space:nowrap;
+    }
+    .body{ padding:16px 18px 18px; }
+
+    textarea,input,select{
+      width:100%;
+      background:rgba(10,17,29,0.7);
+      border:1px solid var(--stroke);
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 12px;
+      outline:none;
+      font-size:14px;
+      transition:border-color .15s ease, box-shadow .15s ease;
+    }
+    textarea{ resize:vertical; }
+    textarea:focus, input:focus, select:focus { border-color: rgba(127,181,255,0.8); box-shadow:0 0 0 3px rgba(91, 142, 255, 0.18); }
+
+    .row{ display:flex; gap:12px; align-items:center; margin-top:12px; }
+    .row label{ flex:1; color:var(--muted); font-size:13px; }
+    .row input[type="range"]{ width:220px; }
+    .row .val{ width:72px; text-align:right; font-size:13px; opacity:.95; }
+
+    .two{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:12px; }
+
+    .btns{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+    button{
+      border:1px solid var(--stroke);
+      background:linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:700;
+      transition:transform .12s ease, border-color .12s ease, background .12s ease;
+    }
+    button:hover{ background:linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06)); border-color: rgba(148,163,184,0.35); }
+    button:active{ transform:translateY(1px); }
+    button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, canvas:focus-visible { outline:3px solid rgba(128,196,255,0.7); outline-offset:2px; }
+    button.good{
+      background:linear-gradient(180deg, rgba(91,224,160,0.2), rgba(91,224,160,0.12));
+      border-color: rgba(91,224,160,0.4);
+    }
+
+    .hint{ margin-top:10px; color:var(--muted); font-size:13px; line-height:1.45; }
+    .section{
+      margin-top:16px;
+      padding-top:12px;
+      border-top:1px solid rgba(255,255,255,0.08);
+      color:#d9e8ff;
+      font-size:13px;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      font-weight:700;
+    }
+
+    .canvasWrap{ padding:12px; }
+    canvas{
+      width:100%;
+      height:auto;
+      display:block;
+      background:#fff;
+      border-radius:14px;
+      border:1px solid rgba(15,23,41,0.1);
+    }
+    .small{ font-size:12px; color:var(--muted); margin-top:8px; }
+
+    canvas.can-grab{ cursor: grab; }
+    canvas.grabbing{ cursor: grabbing; }
+
+    .tableCard{
+      margin-top:12px;
+      background:linear-gradient(180deg, rgba(19,32,53,0.96), rgba(11,18,31,0.96));
+      border:1px solid rgba(148,163,184,0.22);
+      border-radius:18px;
+      overflow:hidden;
+      box-shadow:0 18px 42px rgba(1,5,12,0.28);
+    }
+    .sheetTitle{
+      padding:12px 14px;
+      border-bottom:1px solid rgba(148,163,184,0.18);
+      display:flex; gap:10px; justify-content:space-between; align-items:center;
+      font-weight:800;
+      background:rgba(255,255,255,0.02);
+    }
+    .sheetTitle small{ font-weight:650; color:rgba(255,255,255,0.72); }
+    .sheetWrap{ padding:12px 14px; }
+
+    .paperTable{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      table-layout:fixed;
+      border:1px solid rgba(148,163,184,0.18);
+      border-radius:14px;
+      overflow:hidden;
+      background:rgba(0,0,0,0.18);
+    }
+    .paperTable thead th{
+      font-size:12px;
+      color:rgba(255,255,255,0.82);
+      background:rgba(255,255,255,0.06);
+      border-bottom:1px solid rgba(148,163,184,0.18);
+      padding:10px 8px;
+      text-align:center;
+      font-weight:800;
+    }
+    .paperTable tbody td{
+      border-bottom:1px solid rgba(148,163,184,0.12);
+      border-right:1px solid rgba(148,163,184,0.12);
+      padding:0;
+    }
+    .paperTable tbody tr:last-child td{ border-bottom:none; }
+    .paperTable tbody td:last-child{ border-right:none; }
+
+    .rowIndex{
+      width:44px;
+      text-align:center;
+      color:rgba(255,255,255,0.68);
+      font-size:12px;
+      font-weight:800;
+      background:rgba(255,255,255,0.04);
+    }
+    .cellInput{
+      width:100%;
+      padding:10px 8px;
+      border:0;
+      outline:none;
+      background:transparent;
+      color:#edf5ff;
+      font-size:14px;
+      font-weight:650;
+      text-align:center;
+    }
+    .cellInput:focus{
+      background:rgba(91,224,160,0.08);
+      box-shadow: inset 0 0 0 2px rgba(91,224,160,0.35);
+    }
+    .sheetBtns{
+      margin-top:10px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .sheetHint{
+      margin-top:8px;
+      color:rgba(255,255,255,0.72);
+      font-size:12px;
+      line-height:1.45;
+    }
+
+    @media (min-width: 1101px){
+      .wrap > .card:first-child{
+        position: sticky;
+        top: 86px;
+      }
+      .wrap > .card:first-child .body{
+        max-height: calc(100vh - 120px);
+        overflow: auto;
+        padding-right: 10px;
+      }
+    }
+
+    .wrap > .card:first-child .body::-webkit-scrollbar{ width: 10px; }
+    .wrap > .card:first-child .body::-webkit-scrollbar-thumb{
+      background: rgba(255,255,255,0.18);
+      border-radius: 999px;
+    }
+    .wrap > .card:first-child .body::-webkit-scrollbar-track{
+      background: rgba(0,0,0,0.12);
+      border-radius: 999px;
+    }
+
+    @media (max-width: 760px){
+      .wrap{ grid-template-columns: 1fr; gap:12px; }
+      .body{ padding:14px; }
+      .two, .row{ display:grid; grid-template-columns:1fr; gap:8px; }
+      .row .val{ width:auto; text-align:left; }
+      .row input[type="range"]{ width:100%; }
+      .sheetBtns{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="topbarInner">
+      <div class="brand">
+        MathForge
+        <span>paper tables • pan/zoom • fit • export</span>
+      </div>
+      <div>
+        <button class="good" onclick="location.href='index.html'">← Back</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page">
+    <section id="app-hist">
+      <div class="wrap">
+        <div class="card">
+          <h2>
+            Textbook Histogram + Polygon
+            <span class="pill">table input • break • pan/zoom • FIT • export</span>
+          </h2>
+          <div class="body">
+
+            <!-- TABLE INPUT -->
+            <div class="tableCard">
+              <div class="sheetTitle">
+                <div>Histogram/Polygon — Table Input</div>
+                <small>Paste from Excel/Sheets</small>
+              </div>
+              <div class="sheetBtns">
+                <button id="h_addRow">+ Row</button>
+                <button id="h_delRow">− Row</button>
+                <button class="good" id="h_useTable">Use Table → Draw</button>
+              </div>
+              <div class="sheetWrap">
+                <table class="paperTable" id="h_table">
+                  <thead>
+                    <tr>
+                      <th class="rowIndex">#</th>
+                      <th>Lower Boundary</th>
+                      <th>Upper Boundary</th>
+                      <th>Frequency</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+
+                <div class="sheetHint">
+                  ✅ Paste works (tab/newline). Click first cell then paste.<br/>
+                  ✅ Internally we still generate <code>lo,hi,f</code> into the hidden textarea.
+                </div>
+
+                <!-- Hidden textarea: your engine reads this -->
+                <textarea id="h_data" style="display:none;">44.5,49.5,4
+49.5,54.5,8
+54.5,59.5,10
+</textarea>
+              </div>
+            </div>
+
+            <div class="two">
+              <label style="display:flex;align-items:center;gap:10px;">
+                <input id="h_showHist" type="checkbox" checked />
+                <span style="color:var(--muted);font-size:13px;">Histogram</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;">
+                <input id="h_showPoly" type="checkbox" checked />
+                <span style="color:var(--muted);font-size:13px;">Frequency polygon</span>
+              </label>
+            </div>
+
+            <div class="two">
+              <label style="display:flex;align-items:center;gap:10px;">
+                <input id="h_showMidDots" type="checkbox" checked />
+                <span style="color:var(--muted);font-size:13px;">Midpoint dots</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;">
+                <input id="h_showMidLabels" type="checkbox" />
+                <span style="color:var(--muted);font-size:13px;">Midpoint labels</span>
+              </label>
+            </div>
+
+            <div class="row">
+              <label>Zoom</label>
+              <input id="h_zoom" type="range" min="0.35" max="4.0" value="1.00" step="0.05" />
+              <div class="val" id="h_zoomVal"></div>
+            </div>
+
+            <div class="two">
+              <div>
+                <label style="color:var(--muted);font-size:13px;">Minor square (px)</label>
+                <input id="h_minorPx" type="number" value="10" min="4" step="1" />
+              </div>
+              <div>
+                <label style="color:var(--muted);font-size:13px;">Major every (squares)</label>
+                <input id="h_majorEvery" type="number" value="5" min="2" step="1" />
+              </div>
+            </div>
+
+            <div class="two">
+              <div>
+                <label style="color:var(--muted);font-size:13px;">Y labels step</label>
+                <input id="h_yLabelStep" type="number" value="5" min="1" step="1" />
+              </div>
+              <div>
+                <label style="color:var(--muted);font-size:13px;">Bar opacity</label>
+                <input id="h_barAlpha" type="number" value="0.18" min="0" max="1" step="0.05" />
+              </div>
+            </div>
+
+            <div class="two">
+              <div>
+                <label style="color:var(--muted);font-size:13px;">Canvas (w,h)</label>
+                <input id="h_csize" value="980,600" />
+              </div>
+              <div>
+                <label style="color:var(--muted);font-size:13px;">Origin (ox,oy)</label>
+                <input id="h_origin" value="170,500" />
+              </div>
+            </div>
+
+            <div class="two">
+              <div>
+                <label style="color:var(--muted);font-size:13px;">X: squares per 1 unit</label>
+                <input id="h_xSmallPerUnit" type="number" value="1" min="1" step="1" />
+              </div>
+              <div>
+                <label style="color:var(--muted);font-size:13px;">Y: squares per 1 unit</label>
+                <input id="h_ySmallPerUnit" type="number" value="1" min="1" step="1" />
+              </div>
+            </div>
+
+            <!-- Axis Annotations -->
+            <div class="section">Axis annotations</div>
+
+            <div class="two">
+              <div>
+                <label style="color:var(--muted);font-size:13px;">X-axis label text</label>
+                <input id="h_xLabelText" value="শ্রেনীব্যাপ্তি →" />
+              </div>
+              <div>
+                <label style="color:var(--muted);font-size:13px;">Y-axis label text</label>
+                <input id="h_yLabelText" value="গণসংখ্যা →" />
+              </div>
+            </div>
+
+            <div class="two">
+              <label style="display:flex;align-items:center;gap:10px;">
+                <input id="h_showAxisLabels" type="checkbox" checked />
+                <span style="color:var(--muted);font-size:13px;">Show axis labels</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:10px;">
+                <input id="h_axisLabelArrows" type="checkbox" checked />
+                <span style="color:var(--muted);font-size:13px;">Include arrow (↑ / →)</span>
+              </label>
+            </div>
+
+            <div class="row">
+              <label>Axis label font size</label>
+              <input id="h_fontAxisLabel" type="range" min="10" max="40" value="18" step="1" />
+              <div class="val" id="h_fontAxisLabelVal"></div>
+            </div>
+
+            <div class="two">
+              <div>
+                <label style="color:var(--muted);font-size:13px;">X label offset (px)</label>
+                <input id="h_xLabelOffset" type="number" value="45" />
+              </div>
+              <div>
+                <label style="color:var(--muted);font-size:13px;">Y label offset (px)</label>
+                <input id="h_yLabelOffset" type="number" value="55" />
+              </div>
+            </div>
+            <!-- Axis Annotations -->
+
+            <div class="section">Font sizes</div>
+            <div class="row">
+              <label>Axis letters (X,Y,O)</label>
+              <input id="h_fontAxis" type="range" min="10" max="40" value="16" step="1" />
+              <div class="val" id="h_fontAxisVal"></div>
+            </div>
+            <div class="row">
+              <label>Tick labels (numbers)</label>
+              <input id="h_fontTicks" type="range" min="10" max="34" value="14" step="1" />
+              <div class="val" id="h_fontTicksVal"></div>
+            </div>
+            <div class="row">
+              <label>Midpoint labels</label>
+              <input id="h_fontMid" type="range" min="10" max="34" value="12" step="1" />
+              <div class="val" id="h_fontMidVal"></div>
+            </div>
+
+            <div class="hint">
+              X-axis ticks show <b>only boundaries</b>. Axis break uses <b>/\\/\\</b> and a fixed <b>5-square gap</b>.
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Graph <span class="pill">textbook axis break</span></h2>
+          <div class="btns" style="padding-left: 20px;">
+            <button id="h_resetBtn" type="button">Reset</button>
+            <button id="h_fitBtn">Fit</button>
+            <button class="good" id="h_pngBtn">PNG</button>
+            <button class="good" id="h_svgBtn">SVG</button>
+          </div>
+          <div class="canvasWrap">
+            <canvas id="h_cv" width="980" height="600"></canvas>
+            <div class="small">Pan by dragging. Zoom with wheel (zooms to cursor).</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<script src="assets/js/tools/histogram-engine.js"></script>
+
+</body>
+</html>
