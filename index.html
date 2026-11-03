@@ -1,0 +1,426 @@
+<!-- index.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#202124">
+  <link rel="manifest" href="manifest.webmanifest">
+  <!-- MATHFORGE_PWA_BASE -->
+
+  <title>MathForge — Mathematical Workspace</title>
+
+  <script src="assets/js/core/project-file-adapter.js"></script>
+
+  <!-- Legacy Common Stylesheet (Preserved for compatibility) -->
+  <link rel="stylesheet" href="assets/css/common.css">
+
+  <!-- MathForge Workspace Stylesheet (Scoped under .mf-workspace) -->
+  <link rel="stylesheet" href="assets/css/workspace.css">
+
+  <!-- Tool Stylesheets -->
+  <link rel="stylesheet" href="assets/css/tools/coordinates-tool.css">
+  <link rel="stylesheet" href="assets/css/tools/shared-graph-controls.css">
+</head>
+
+<body class="mf-workspace-active">
+
+<div class="mf-workspace" id="mfWorkspace" aria-label="MathForge Workspace">
+
+  <!-- ====================================================================
+       A. TOP APPLICATION HEADER
+       ==================================================================== -->
+  <header class="mf-header" role="banner">
+
+    <!-- Branding -->
+    <div class="mf-brand">
+      <div class="mf-brand-logo" title="MathForge">
+        <img src="assets/img/MathForge Logo.png" alt="MathForge logo">
+      </div>
+      <div class="mf-brand-text">
+        <span class="mf-brand-name">MathForge</span>
+        <span class="mf-brand-caption">MATHEMATICAL WORKSPACE</span>
+      </div>
+    </div>
+
+    <nav class="mf-menu-bar" aria-label="Application navigation">
+      <div class="mf-menu-root">
+        <button class="mf-menu-btn" id="mfFileMenuButton" type="button" aria-haspopup="true" aria-expanded="false">File</button>
+        <div class="mf-menu-dropdown" id="mfFileMenu" role="menu" aria-label="File">
+          <button type="button" role="menuitem" data-menu-action="new">New File <span>Ctrl+N</span></button>
+          <button type="button" role="menuitem" data-menu-action="open">Open File <span>Ctrl+O</span></button>
+          <button type="button" role="menuitem" data-menu-action="open-folder">Open Folder</button>
+          <div class="mf-menu-separator" role="separator"></div>
+          <button type="button" role="menuitem" data-menu-action="save">Save File <span>Ctrl+S</span></button>
+          <button type="button" role="menuitem" data-menu-action="save-as">Save File As <span>Ctrl+Shift+S</span></button>
+          <div class="mf-menu-separator" role="separator"></div>
+          <button type="button" role="menuitem" data-menu-action="export">Export Graph As</button>
+          <button type="button" role="menuitem" data-menu-action="exit">Exit</button>
+        </div>
+      </div>
+      <button class="mf-menu-btn" id="mfHomeBtn" type="button" title="Return to the workspace overview">Home</button>
+      <div class="mf-menu-root">
+        <button class="mf-menu-btn" id="mfEditMenuButton" type="button" aria-haspopup="true" aria-expanded="false">Edit</button>
+        <div class="mf-menu-dropdown" id="mfEditMenu" role="menu" aria-label="Edit">
+          <button type="button" role="menuitem" data-menu-action="undo" id="mfUndoMenuItem" disabled>Undo <span>Ctrl+Z</span></button>
+          <button type="button" role="menuitem" data-menu-action="redo" id="mfRedoMenuItem" disabled>Redo <span>Ctrl+Y</span></button>
+          <div class="mf-menu-separator" role="separator"></div>
+          <button type="button" role="menuitem" data-menu-action="zoom-in">Zoom In <span>Ctrl++</span></button>
+          <button type="button" role="menuitem" data-menu-action="zoom-out">Zoom Out <span>Ctrl+-</span></button>
+          <div class="mf-menu-separator" role="separator"></div>
+          <button type="button" role="menuitem" data-menu-action="rename">Rename File</button>
+        </div>
+      </div>
+      <div class="mf-menu-root">
+        <button class="mf-menu-btn" id="mfHelpMenuButton" type="button" aria-haspopup="true" aria-expanded="false">Help</button>
+        <div class="mf-menu-dropdown" id="mfHelpMenu" role="menu" aria-label="Help">
+          <button type="button" role="menuitem" data-menu-action="about">About MathForge</button>
+          <button type="button" role="menuitem" data-menu-action="shortcuts">Keyboard Shortcuts</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="mf-header-project-name" id="mfProjectName" aria-live="polite">Untitled Project</div>
+
+    <!-- Header Controls & Offline Status -->
+    <div class="mf-header-right">
+      <!-- Panel Visibility Toggles -->
+      <div class="mf-panel-toggle-group" aria-label="Panel visibility toggles" role="toolbar">
+        <button class="mf-toggle-btn active" id="mfToggleLeftBtn" type="button" title="Toggle Left Input Tools Panel" aria-label="Toggle Left Panel" aria-controls="mfLeftPanel" aria-expanded="true" aria-pressed="true">◧</button>
+        <button class="mf-toggle-btn active" id="mfToggleBottomBtn" type="button" title="Toggle Bottom Export Tools Panel" aria-label="Toggle Bottom Panel" aria-controls="mfBottomPanel" aria-expanded="true" aria-pressed="true">⬒</button>
+        <button class="mf-toggle-btn active" id="mfToggleRightBtn" type="button" title="Toggle Right Design Properties Panel" aria-label="Toggle Right Panel" aria-controls="mfRightPanel" aria-expanded="true" aria-pressed="true">◨</button>
+      </div>
+
+      <!-- Offline Indicator -->
+      <span class="mf-offline-pill" title="MathForge is running completely offline with local assets">
+        <span class="mf-status-dot"></span>
+        Offline
+      </span>
+
+    </div>
+
+  </header>
+
+
+  <!-- ====================================================================
+       MAIN WORKSPACE (Left Panel, Central Document Canvas, Right Panel)
+       ==================================================================== -->
+  <main class="mf-workspace-body" role="main">
+
+    <!-- ------------------------------------------------------------------
+         B. LEFT PANEL — INPUT TOOLS
+         ------------------------------------------------------------------ -->
+    <aside class="mf-side-panel mf-left-panel" id="mfLeftPanel" aria-label="Input Tools Panel">
+
+      <div class="mf-panel-header">
+        <span>Input Tools <small>01</small></span>
+        <button class="mf-tool-btn" id="mfCollapseLeftBtn" type="button" title="Collapse Left Panel" aria-label="Collapse Left Panel" aria-controls="mfLeftPanel" aria-expanded="true">◀</button>
+      </div>
+
+      <div class="mf-panel-content">
+
+        <div class="mf-group-label">Graph Generators</div>
+
+        <!-- Tool Selection List -->
+        <nav class="mf-tool-list" id="mfToolList" aria-label="Graph generators list">
+
+          <button class="mf-tool-card" type="button" data-tool-id="coordinates-graph" aria-pressed="false">
+            <span class="mf-tool-icon" aria-hidden="true">⌖</span>
+            <span class="mf-tool-info">
+              <span class="mf-tool-name">Coordinates Graph</span>
+              <span class="mf-tool-desc">Points and coordinate plane</span>
+            </span>
+          </button>
+
+          <button class="mf-tool-card" type="button" data-tool-id="equation-plotter" aria-pressed="false">
+            <span class="mf-tool-icon" aria-hidden="true">ƒ</span>
+            <span class="mf-tool-info">
+              <span class="mf-tool-name">Equation Plotter</span>
+              <span class="mf-tool-desc">Functions and equations</span>
+            </span>
+          </button>
+
+          <button class="mf-tool-card" type="button" data-tool-id="ogive-curve" aria-pressed="false">
+            <span class="mf-tool-icon" aria-hidden="true">∿</span>
+            <span class="mf-tool-info">
+              <span class="mf-tool-name">Ogive Line</span>
+              <span class="mf-tool-desc">Cumulative frequency</span>
+            </span>
+          </button>
+
+          <button class="mf-tool-card" type="button" data-tool-id="histogram-polygon" aria-pressed="false">
+            <span class="mf-tool-icon" aria-hidden="true">▥</span>
+            <span class="mf-tool-info">
+              <span class="mf-tool-name">Histogram / Polygon</span>
+              <span class="mf-tool-desc">Statistical distributions</span>
+            </span>
+          </button>
+
+        </nav>
+
+        <div id="mfToolControlsContainer"></div>
+
+        <div class="mf-panel-divider"></div>
+
+        <div class="mf-group-label">Workspace Projects</div>
+
+        <button class="mf-action-btn mf-btn-block mf-mb-xs" type="button" id="mfNewProjectBtn">＋ New Project</button>
+        <button class="mf-action-btn mf-btn-block mf-mb-xs" type="button" id="mfOpenProjectBtn">▣ Open Project / Import</button>
+        <label class="mf-project-recent-label" for="mfSaveAsName">Project name</label>
+        <input id="mfSaveAsName" class="mf-project-name-input" type="text" value="Untitled Project" maxlength="80">
+        <button class="mf-action-btn mf-btn-block mf-mb-xs" type="button" id="mfSaveAsProjectBtn">Save As / Export</button>
+        <label class="mf-project-recent-label" for="mfRecentProjects">Recent Projects</label>
+        <select id="mfRecentProjects" class="mf-project-recent" aria-label="Recent projects">
+          <option value="">No saved projects yet</option>
+        </select>
+        <input id="mfProjectFileInput" type="file" accept=".mathforge,.json,application/json" hidden>
+
+        <div class="mf-panel-divider"></div>
+
+        <div class="mf-group-label">Standalone Tools Fallback</div>
+
+        <div class="mf-property-placeholder mf-fallback-box">
+          For independent standalone mode without the unified shell:
+          <ul class="mf-fallback-list">
+            <li><a href="Coordinates_graph.html">Coordinates Page</a></li>
+            <li><a href="Equation.html">Equation Page</a></li>
+            <li><a href="Ogiveline.html">Ogive Page</a></li>
+            <li><a href="Polygonal.html">Histogram Page</a></li>
+          </ul>
+        </div>
+
+      </div>
+    </aside>
+
+
+    <!-- ------------------------------------------------------------------
+         C. CENTRAL WORKSPACE (DOCUMENT CANVAS STAGE)
+         ------------------------------------------------------------------ -->
+    <section class="mf-canvas-area" id="mfCanvasArea" aria-label="Central Canvas Workspace">
+
+      <!-- Document Tab Strip -->
+      <div class="mf-doc-bar" id="mfDocTabsContainer" role="tablist" aria-label="Open documents">
+        <div class="mf-doc-tab active" id="mfDocTab-untitled-1" data-tab-id="untitled-1" role="tab" aria-selected="true" aria-controls="mfCanvasSheet" tabindex="0">
+          <span class="mf-tab-icon" aria-hidden="true">▧</span>
+          <span class="mf-tab-title">Untitled Workspace</span>
+        </div>
+      </div>
+
+      <!-- Canvas Toolbar -->
+      <div class="mf-canvas-toolbar" role="toolbar" aria-label="Canvas navigation tools">
+        <div class="mf-toolbar-tools">
+          <button class="mf-tool-btn" type="button" id="mfZoomInBtn" disabled aria-disabled="true" title="Zoom in" aria-label="Zoom in"><span aria-hidden="true">＋</span></button>
+          <button class="mf-tool-btn" type="button" id="mfZoomOutBtn" disabled aria-disabled="true" title="Zoom out" aria-label="Zoom out"><span aria-hidden="true">−</span></button>
+          <button class="mf-tool-btn" type="button" id="mfResetViewToolbarBtn" disabled aria-disabled="true" title="Reset active graph" aria-label="Reset active graph"><span aria-hidden="true">⟲</span></button>
+        </div>
+
+        <span class="mf-zoom-indicator" id="mfCanvasZoomReadout">Workspace · 100%</span>
+      </div>
+
+      <!-- Canvas Stage Surface -->
+      <div class="mf-canvas-stage" id="mfCanvasStage">
+
+        <div class="mf-canvas-sheet" id="mfCanvasSheet" role="tabpanel" aria-labelledby="mfDocTab-untitled-1" tabindex="0">
+
+          <!-- 1. Empty-State Welcome Screen -->
+          <div class="mf-welcome-content" id="mfWelcomeContent">
+            <div class="mf-welcome-badge" aria-hidden="true">∑</div>
+            <h1>Welcome to MathForge</h1>
+            <p>
+              Your professional offline mathematical workspace is initialized.
+              Select an engine from the <b>Input Tools</b> panel on the left to begin creating and exploring mathematical visualizations.
+            </p>
+
+            <div class="mf-welcome-quick-actions">
+              <button class="mf-action-btn primary" type="button" data-welcome-select-tool="coordinates-graph">
+                <span>⌖ Coordinates Graph</span>
+              </button>
+              <button class="mf-action-btn" type="button" data-welcome-select-tool="equation-plotter">
+                <span>ƒ Equation Plotter</span>
+              </button>
+              <button class="mf-action-btn" type="button" data-welcome-select-tool="ogive-curve">
+                <span>∿ Ogive Line</span>
+              </button>
+              <button class="mf-action-btn" type="button" data-welcome-select-tool="histogram-polygon">
+                <span>▥ Histogram / Polygon</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. Active Tool Informative Placeholder -->
+          <div class="mf-active-placeholder" id="mfActivePlaceholder"></div>
+
+          <!-- 3. Tool Mount Container -->
+          <div class="mf-tool-mount-container" id="mfToolMountContainer"></div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- ------------------------------------------------------------------
+         D. RIGHT PANEL — DESIGN & PROPERTIES
+         ------------------------------------------------------------------ -->
+    <aside class="mf-side-panel mf-right-panel" id="mfRightPanel" aria-label="Design Properties Panel">
+
+      <div class="mf-panel-header">
+        <span>Design & Properties <small>02</small></span>
+        <button class="mf-tool-btn" id="mfCollapseRightBtn" type="button" title="Collapse Right Panel" aria-label="Collapse Right Panel" aria-controls="mfRightPanel" aria-expanded="true">▶</button>
+      </div>
+
+      <div class="mf-panel-content">
+
+        <!-- Dynamic Contextual Properties Container (Hydrated by workspace-core.js) -->
+        <div id="mfPropertiesContainer">
+          <div class="mf-property-placeholder">
+            Select a tool from the Input Tools panel to view its customizable visual properties.
+          </div>
+        </div>
+
+        <!-- Document Global Properties -->
+        <section class="mf-property-section">
+          <div class="mf-property-title">Document Scope</div>
+          <div class="mf-property-row">
+            <span>Document</span>
+            <span class="mf-property-value" id="mfPropDocName">Untitled-1</span>
+          </div>
+          <div class="mf-property-row">
+            <span>Canvas Theme</span>
+            <span class="mf-property-value">Pure White</span>
+          </div>
+          <div class="mf-property-row">
+            <span>High-DPI Ratio</span>
+            <span class="mf-property-value" id="mfPropDpr">1.0×</span>
+          </div>
+        </section>
+
+        <!-- Layers Foundation -->
+        <section class="mf-property-section">
+          <div class="mf-property-title">Document Layers</div>
+          <div class="mf-layer-item">
+            <span class="mf-layer-icon">▧</span>
+            <span>Workspace Canvas</span>
+          </div>
+          <div class="mf-layer-item">
+            <span class="mf-layer-icon">◈</span>
+            <span>Active Mathematical Engine</span>
+          </div>
+          <div class="mf-layer-item">
+            <span class="mf-layer-icon">T</span>
+            <span>Labels & Text Annotations</span>
+          </div>
+        </section>
+
+      </div>
+    </aside>
+
+  </main>
+
+
+  <!-- ====================================================================
+       E. BOTTOM PANEL — EXPORT TOOLS FOUNDATION
+       ==================================================================== -->
+  <section class="mf-bottom-panel" id="mfBottomPanel" aria-label="Export Tools Panel">
+
+    <div class="mf-export-area">
+      <div class="mf-bottom-heading">
+        <span>Export Tools</span>
+        <button class="mf-tool-btn" id="mfCollapseBottomBtn" type="button" title="Collapse Export Panel" aria-label="Collapse Export Panel" aria-controls="mfBottomPanel" aria-expanded="true">▼</button>
+      </div>
+
+      <div class="mf-export-actions">
+        <button class="mf-export-btn" type="button" id="mfExportPngBtn" disabled aria-disabled="true" title="Export the active graph as PNG">
+          <span class="mf-export-icon" aria-hidden="true">↓</span>
+          Export PNG
+        </button>
+
+        <button class="mf-export-btn" type="button" id="mfSaveProjectBtn" title="Save the current project">
+          <span class="mf-export-icon" aria-hidden="true">▣</span>
+          Save Project
+        </button>
+      </div>
+
+      <div class="mf-export-notice" id="mfStorageNotice" role="status" aria-live="polite">
+        Autosave uses browser IndexedDB when available. Export a .mathforge project file for portable backups.
+      </div>
+    </div>
+
+    <div class="mf-bottom-info">
+      <strong>MathForge Platform</strong>
+      <span>
+        Direct DOM integration with modular tool lifecycle. Fully offline with zero external network dependencies.
+      </span>
+    </div>
+
+  </section>
+
+
+  <!-- ====================================================================
+       F. BOTTOM STATUS BAR
+       ==================================================================== -->
+  <footer class="mf-statusbar">
+
+    <div class="mf-status-left">
+      <div class="mf-status-item">
+        <span class="mf-status-label">Status:</span>
+        <span class="mf-status-val" id="mfStatusMessage" role="status" aria-live="polite" aria-atomic="true">Ready</span>
+      </div>
+      <div class="mf-status-item">
+        <span class="mf-status-label">Tool:</span>
+        <span class="mf-status-val" id="mfStatusActiveTool">None (Overview)</span>
+      </div>
+      <div class="mf-status-item">
+        <span class="mf-status-label">Doc:</span>
+        <span class="mf-status-val" id="mfStatusDoc">untitled-1</span>
+      </div>
+    </div>
+
+    <div class="mf-status-right">
+      <div class="mf-status-item">
+        <span class="mf-status-label">Zoom:</span>
+        <span class="mf-status-val" id="mfStatusZoom">100%</span>
+      </div>
+      <div class="mf-status-item">
+        <span class="mf-status-val mf-status-offline"><span class="mf-status-dot-sm" aria-hidden="true">●</span> Offline Mode</span>
+      </div>
+      <div class="mf-status-item">
+        <span class="mf-status-val">MathForge 2.0</span>
+      </div>
+    </div>
+
+  </footer>
+
+</div>
+
+<div class="mf-dialog-backdrop" id="mfDialogBackdrop" hidden>
+  <section class="mf-dialog" role="dialog" aria-modal="true" aria-labelledby="mfDialogTitle" aria-describedby="mfDialogMessage">
+    <h2 id="mfDialogTitle"></h2>
+    <p id="mfDialogMessage"></p>
+    <div id="mfDialogField"></div>
+    <div class="mf-dialog-actions">
+      <button class="mf-action-btn" type="button" id="mfDialogCancel">Cancel</button>
+      <button class="mf-action-btn primary" type="button" id="mfDialogConfirm">Continue</button>
+    </div>
+  </section>
+</div>
+
+<!-- Shared graph utilities used by standalone engines in the workspace -->
+<script src="assets/js/common.js"></script>
+
+<!-- MathForge Workspace Core Script (Classic script for direct file:// offline compatibility) -->
+<script src="assets/js/workspace-core.js"></script>
+
+<!-- MathForge Tool Adapters -->
+<script src="assets/js/tools/coordinates-tool.js"></script>
+<script src="assets/js/tools/standalone-control-templates.js"></script>
+<script src="assets/js/tools/equation-plotter-engine.js"></script>
+<script src="assets/js/tools/ogive-engine.js"></script>
+<script src="assets/js/tools/histogram-engine.js"></script>
+<script src="assets/js/tools/standalone-adapters.js"></script>
+<script src="assets/js/project-manager.js"></script>
+
+</body>
+</html>
