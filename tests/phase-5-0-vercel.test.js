@@ -116,7 +116,11 @@ test("manifest, worker headers, icons, and all precache resources are deployable
   const assetList = worker.match(/var APP_ASSETS = \[([\s\S]*?)\];/);
   assert.ok(assetList, "service-worker precache list is present");
   const precachePaths = Array.from(assetList[1].matchAll(/"([^"]+)"/g), (match) => match[1]);
-  assert.equal(precachePaths.length, 24);
+  assert.equal(precachePaths.length, 28);
+  assert.ok(precachePaths.includes("assets/js/core/graph-scale.js"));
+  assert.ok(precachePaths.includes("assets/js/core/graph-typography.js"));
+  assert.ok(precachePaths.includes("assets/js/core/graph-design-settings.js"));
+  assert.ok(precachePaths.includes("assets/fonts/kalpurush.ttf"));
   for (const assetPath of precachePaths) {
     const response = await fetch(new URL(assetPath, baseUrl + "/"));
     assert.equal(response.status, 200, assetPath);
