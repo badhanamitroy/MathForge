@@ -73,7 +73,8 @@
       name: currentName,
       updatedAt: new Date().toISOString(),
       activeTool: state.activeTool || null,
-      toolStates: workspace ? workspace.getToolStates() : {}
+      toolStates: workspace ? workspace.getToolStates() : {},
+      graphDesignSettings: window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState() : undefined
     };
   }
 
@@ -81,7 +82,8 @@
     return JSON.stringify({
       name: project.name,
       activeTool: project.activeTool,
-      toolStates: project.toolStates
+      toolStates: project.toolStates,
+      graphDesignSettings: project.graphDesignSettings || null
     });
   }
 
@@ -228,6 +230,10 @@
       currentId = options.keepId ? currentId : (project.sourceId || project.id || newProjectId());
       if (currentId === AUTOSAVE_ID) currentId = newProjectId();
       setProjectName(project.name);
+      if (window.MathForgeGraphDesignSettings) {
+        if (project.graphDesignSettings) window.MathForgeGraphDesignSettings.setState(project.graphDesignSettings);
+        else window.MathForgeGraphDesignSettings.reset();
+      }
       window.MathForgeWorkspace.selectTool(null);
       window.MathForgeWorkspace.resetTools();
       window.MathForgeWorkspace.setToolStates(project.toolStates);
@@ -696,6 +702,7 @@
       window.MathForgeWorkspace.selectTool(null);
       window.MathForgeWorkspace.resetTools();
       window.MathForgeWorkspace.setToolStates({});
+      if (window.MathForgeGraphDesignSettings) window.MathForgeGraphDesignSettings.reset();
     } finally {
       isRestoring = false;
     }

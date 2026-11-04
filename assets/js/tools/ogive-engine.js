@@ -12,12 +12,38 @@ function mount(options) {
   var canvasView = options.canvasView || null;
   var controlRoot = options.controlsRoot || document;
   var cleanups = [];
+  function getToolControls(selector) {
+    var elements = [];
+    [controlRoot, document.querySelector("#mfPropertiesContainer .mf-graph-specific-controls")].forEach(function (root) {
+      if (!root || !root.querySelectorAll) return;
+      Array.prototype.forEach.call(root.querySelectorAll(selector), function (element) {
+        if (elements.indexOf(element) === -1) elements.push(element);
+      });
+    });
+    return elements;
+  }
   function listen(target, type, handler, listenerOptions) {
     target.addEventListener(type, handler, listenerOptions);
     cleanups.push(function () { target.removeEventListener(type, handler, listenerOptions); });
   }
 
   const $ = (id) => document.getElementById(id);
+  const graphTypography = window.MathForgeGraphTypography;
+  const typographyControls = graphTypography && graphTypography.ensureControls(controlRoot, "ogive");
+
+  function readTypography() {
+    return typographyControls ? graphTypography.read(typographyControls.sizeInput, typographyControls.boldInput, typographyControls.familyInput, typographyControls.colorInput) : { fontSizePt: 11, bold: false };
+  }
+
+  function sharedAxisRate(axis, fallback) {
+    return window.MathForgeGraphScale
+      ? window.MathForgeGraphScale.effectiveRate(axis, fallback)
+      : Number(fallback);
+  }
+
+  function graphFont(sizePx, typography) {
+    return graphTypography ? graphTypography.font(sizePx, typography) : `${sizePx}px "Times New Roman", "Kalpurush", serif`;
+  }
   var oGrid = makeTableGrid({
     tableId:"o_table",
     textareaId:"o_data",
@@ -100,10 +126,12 @@ function mount(options) {
   }
 
   function readFonts(){
+    const typography = readTypography();
     return {
-      axis: Number($('o_fontAxis')?.value ?? 16),
-      ticks: Number($('o_fontTicks')?.value ?? 14),
-      point: Number($('o_fontPoint')?.value ?? 12),
+      axis: graphTypography.scaledSizePx(Number($('o_fontAxis')?.value ?? 16), 16, typography),
+      ticks: graphTypography.scaledSizePx(Number($('o_fontTicks')?.value ?? 14), 14, typography),
+      point: graphTypography.scaledSizePx(Number($('o_fontPoint')?.value ?? 12), 12, typography),
+      typography: typography,
     };
   }
 
@@ -115,7 +143,8 @@ function mount(options) {
       addArrows: $('o_axisLabelArrows')?.checked,
       xOffset: $('o_xLabelOffset')?.value,
       yOffset: $('o_yLabelOffset')?.value,
-      fontSize: $('o_fontAxisLabel')?.value,
+      fontSize: graphTypography.scaledSizePx(Number($('o_fontAxisLabel')?.value ?? 18), 18, readTypography()),
+      typography: readTypography(),
     };
   }
 
@@ -141,10 +170,10 @@ function mount(options) {
 
   function drawOgiveCurve(points, params, fonts){
     pointHit = [];
-    const w = Math.max(1, Number($('o_curveW')?.value ?? 4));
+    const w = window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().lineWidth : Math.max(1, Number($('o_curveW')?.value ?? 4));
 
     ctx.save();
-    ctx.strokeStyle="#000";
+    ctx.strokeStyle=window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().lineColor : "#000";
     ctx.lineWidth=w;
     ctx.lineJoin="round";
     ctx.lineCap="round";
@@ -160,7 +189,7 @@ function mount(options) {
     ctx.stroke();
 
     if($('o_showDots')?.checked){
-      ctx.fillStyle="#000";
+      ctx.fillStyle=window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().fontColor : "#000";
       for(const p of points){
         const [px,py] = worldToCanvas(p.x,p.y, params);
         const r = 5;
@@ -170,8 +199,8 @@ function mount(options) {
     }
 
     if($('o_showPointLabels')?.checked){
-      ctx.fillStyle="#000";
-      ctx.font = `${fonts.point}px system-ui`;
+      ctx.fillStyle=window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().fontColor : "#000";
+      ctx.font = graphFont(fonts.point, fonts.typography);
       ctx.textAlign="left";
       ctx.textBaseline="bottom";
       for(const p of points){
@@ -189,8 +218,8 @@ function mount(options) {
 
     const minorPx = Number($('o_minorPx').value);
     const majorEvery = Number($('o_majorEvery').value);
-    const xSmallPerUnit = Number($('o_xSmallPerUnit').value);
-    const ySmallPerUnit = Number($('o_ySmallPerUnit').value);
+    const xSmallPerUnit = sharedAxisRate("x", Number($('o_xSmallPerUnit').value));
+    const ySmallPerUnit = sharedAxisRate("y", Number($('o_ySmallPerUnit').value));
 
     const {minX,maxX,maxY} = computeBounds(rows);
 
@@ -239,8 +268,8 @@ function mount(options) {
         ox,oy,
         minorPx,
         majorEvery,
-        xSmallPerUnit: Number($('o_xSmallPerUnit').value),
-        ySmallPerUnit: Number($('o_ySmallPerUnit').value),
+        xSmallPerUnit: sharedAxisRate("x", Number($('o_xSmallPerUnit').value)),
+        ySmallPerUnit: sharedAxisRate("y", Number($('o_ySmallPerUnit').value)),
         zoom,
         breakFrom,
         breakTo,
@@ -320,8 +349,8 @@ function mount(options) {
         const minorPx = Number($('o_minorPx').value);
         const majorEvery = Number($('o_majorEvery').value);
         const zoom = Number($('o_zoom').value);
-        const xSmallPerUnit = Number($('o_xSmallPerUnit').value);
-        const ySmallPerUnit = Number($('o_ySmallPerUnit').value);
+        const xSmallPerUnit = sharedAxisRate("x", Number($('o_xSmallPerUnit').value));
+        const ySmallPerUnit = sharedAxisRate("y", Number($('o_ySmallPerUnit').value));
         const firstLowerBoundary = rows[0].lo;
 
         const breakFrom = 0;
@@ -404,8 +433,8 @@ function mount(options) {
 
     const minorPx = Number($('o_minorPx').value);
     const majorEvery = Number($('o_majorEvery').value);
-    const xSmallPerUnit = Number($('o_xSmallPerUnit').value);
-    const ySmallPerUnit = Number($('o_ySmallPerUnit').value);
+    const xSmallPerUnit = sharedAxisRate("x", Number($('o_xSmallPerUnit').value));
+    const ySmallPerUnit = sharedAxisRate("y", Number($('o_ySmallPerUnit').value));
 
     const rows = parseData($('o_data').value);
     const firstLowerBoundary = rows[0].lo;
@@ -498,16 +527,21 @@ function mount(options) {
     if(el) listen(el, "input", ()=>{ refreshVals(); redraw(); });
   });
 
+  if (typographyControls) {
+    listen(typographyControls.sizeInput, "input", redraw);
+    listen(typographyControls.boldInput, "change", redraw);
+  }
+
   refreshVals();
   redraw();
   setCursor("can-grab");
 
 
   function captureState() {
-    var controls = Array.prototype.slice.call(controlRoot.querySelectorAll('input, textarea, select')).map(function (element) {
+    var controls = getToolControls('input, textarea, select').map(function (element) {
       return { id: element.id || '', type: element.type || element.tagName.toLowerCase(), value: element.value, checked: Boolean(element.checked) };
     });
-    var tables = Array.prototype.slice.call(controlRoot.querySelectorAll('table[id]')).map(function (table) {
+    var tables = getToolControls('table[id]').map(function (table) {
       return { id: table.id, rows: Array.prototype.slice.call(table.tBodies[0] ? table.tBodies[0].rows : []).map(function (row) {
         return Array.prototype.slice.call(row.querySelectorAll('input')).map(function (input) { return input.value; });
       }) };
@@ -523,7 +557,7 @@ function mount(options) {
         grid.textToTable(tableState.rows.map(function (row) { return row.join(','); }).join('\n'));
       }
     });
-    var controls = Array.prototype.slice.call(controlRoot.querySelectorAll('input, textarea, select'));
+    var controls = getToolControls('input, textarea, select');
     saved.controls.forEach(function (item, index) {
       var element = item.id ? document.getElementById(item.id) : controls[index];
       if (!element || element.type === 'file') return;

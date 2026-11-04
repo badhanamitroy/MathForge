@@ -226,29 +226,46 @@
     if (worldW <= 0) worldW = 10;
     if (worldH <= 0) worldH = 10;
 
-    var sx = (W - 2 * padPx) / worldW;
-    var sy = (H - 2 * padPx) / worldH;
-    var baseScale = Math.min(sx, sy);
-    var scale = baseScale * (viewZoom || 1.0);
+    var sharedScale = window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState
+      ? window.MathForgeGraphDesignSettings.getState().axisScale : null;
+    var rateX = window.MathForgeGraphScale
+      ? window.MathForgeGraphScale.effectiveRate("x", 1)
+      : (sharedScale ? sharedScale.x.k / sharedScale.x.n : 1);
+    var rateY = window.MathForgeGraphScale
+      ? window.MathForgeGraphScale.effectiveRate("y", 1)
+      : (sharedScale ? sharedScale.y.k / sharedScale.y.n : 1);
+    var squarePx = Math.min((W - 2 * padPx) / (worldW * rateX), (H - 2 * padPx) / (worldH * rateY));
+    var zoom = viewZoom || 1.0;
+    var scaleX = squarePx * rateX * zoom;
+    var scaleY = squarePx * rateY * zoom;
+    var baseScale = Math.min(scaleX, scaleY);
+    var scale = baseScale * zoom;
 
-    var drawW = worldW * scale;
-    var drawH = worldH * scale;
+    var drawW = worldW * scaleX * zoom;
+    var drawH = worldH * scaleY * zoom;
     var offsetX = (W - drawW) / 2 + (viewOffset ? viewOffset.x : 0);
     var offsetY = (H - drawH) / 2 + (viewOffset ? viewOffset.y : 0);
 
     return {
       scale: scale,
       baseScale: baseScale,
+      scaleX: scaleX,
+      scaleY: scaleY,
+      squarePx: squarePx * zoom,
+      rateX: rateX,
+      rateY: rateY,
+      unitsPerSquareX: 1 / rateX,
+      unitsPerSquareY: 1 / rateY,
       offsetX: offsetX,
       offsetY: offsetY,
       padPx: padPx,
       bounds: bounds,
       drawW: drawW,
       drawH: drawH,
-      xToPx: function (x) { return offsetX + (x - bounds.minX) * scale; },
-      yToPx: function (y) { return offsetY + (bounds.maxY - y) * scale; },
-      pxToX: function (px) { return bounds.minX + (px - offsetX) / scale; },
-      pxToY: function (py) { return bounds.maxY - (py - offsetY) / scale; }
+      xToPx: function (x) { return offsetX + (x - bounds.minX) * scaleX * zoom; },
+      yToPx: function (y) { return offsetY + (bounds.maxY - y) * scaleY * zoom; },
+      pxToX: function (px) { return bounds.minX + (px - offsetX) / (scaleX * zoom); },
+      pxToY: function (py) { return bounds.maxY - (py - offsetY) / (scaleY * zoom); }
     };
   }
 
@@ -309,13 +326,17 @@
   function drawTextBox(ctx, text, x, y, options) {
     options = options || {};
     var fontSize = options.fontSize || 14;
+    var typography = options.typography || { fontSizePt: 11, bold: false };
+    var defaultFontSize = options.defaultFontSize || fontSize;
+    var graphTypography = window.MathForgeGraphTypography;
+    if (graphTypography) fontSize = graphTypography.scaledSizePx(fontSize, defaultFontSize, typography);
     var padding = options.padding || 6;
     var bg = options.bg || "rgba(255,255,255,0.92)";
-    var color = options.color || "#000000";
+    var color = options.color || (typography && typography.fontColor) || "#000000";
     var align = options.align || "left";
     var baseline = options.baseline || "middle";
 
-    ctx.font = fontSize + "px system-ui, Arial, sans-serif";
+    ctx.font = graphTypography ? graphTypography.font(fontSize, typography) : fontSize + 'px "Times New Roman", "Kalpurush", serif';
     ctx.textAlign = align;
     ctx.textBaseline = baseline;
 
@@ -357,88 +378,57 @@
     var visMinY = Math.min(bounds.minY, Math.min(worldYTop, worldYBottom));
     var visMaxY = Math.max(bounds.maxY, Math.max(worldYTop, worldYBottom));
 
-    var startX = Math.floor(visMinX);
-    var endX = Math.ceil(visMaxX);
-    var startY = Math.floor(visMinY);
-    var endY = Math.ceil(visMaxY);
-
     var isGridOn = viewOpts.gridVisible !== false;
     if (isGridOn) {
       var gColor = viewOpts.gridColor || "#000000";
       var gOpacity = (viewOpts.gridOpacity != null) ? viewOpts.gridOpacity : 0.15;
-
-      ctx.save();
-      ctx.strokeStyle = gColor;
-      ctx.lineWidth = 1;
-      ctx.globalAlpha = Math.max(0, Math.min(1, gOpacity * 0.55));
-      var x, y;
-      for (x = startX; x <= endX; x++) {
-        ctx.beginPath();
-        ctx.moveTo(xToPx(x), yToPx(startY));
-        ctx.lineTo(xToPx(x), yToPx(endY));
-        ctx.stroke();
-      }
-      for (y = startY; y <= endY; y++) {
-        ctx.beginPath();
-        ctx.moveTo(xToPx(startX), yToPx(y));
-        ctx.lineTo(xToPx(endX), yToPx(y));
-        ctx.stroke();
-      }
-
-      ctx.lineWidth = 1.2;
-      ctx.globalAlpha = Math.max(0, Math.min(1, gOpacity * 1.2));
-      for (x = Math.ceil(startX / 5) * 5; x <= endX; x += 5) {
-        ctx.beginPath();
-        ctx.moveTo(xToPx(x), yToPx(startY));
-        ctx.lineTo(xToPx(x), yToPx(endY));
-        ctx.stroke();
-      }
-      for (y = Math.ceil(startY / 5) * 5; y <= endY; y += 5) {
-        ctx.beginPath();
-        ctx.moveTo(xToPx(startX), yToPx(y));
-        ctx.lineTo(xToPx(endX), yToPx(y));
-        ctx.stroke();
-      }
-      ctx.restore();
+      var logicalWidth = width;
+      var logicalHeight = height;
+      var paperCanvas = { width: logicalWidth, height: logicalHeight };
+      var originX = xToPx(0);
+      var originY = yToPx(0);
+      var sharedDesign = window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState
+        ? window.MathForgeGraphDesignSettings.getState() : null;
+      var minorSquarePx = tf.squarePx || (sharedDesign ? sharedDesign.gridSpacing : scale / 5);
+      var majorEvery = sharedDesign ? sharedDesign.majorEvery : 5;
+      window.drawGraphPaper(ctx, paperCanvas, originX, originY, minorSquarePx, majorEvery, 1, {
+        color: gColor,
+        opacityScale: Math.max(0, Number(gOpacity) || 0) / 0.15
+      });
     }
 
+    var startX = Math.floor(visMinX);
+    var endX = Math.ceil(visMaxX);
+    var startY = Math.floor(visMinY);
+    var endY = Math.ceil(visMaxY);
     var isXOn = viewOpts.xAxisVisible !== false;
     var isYOn = viewOpts.yAxisVisible !== false;
     var aColor = viewOpts.axisColor || "#000000";
     var aWidth = viewOpts.axisWidth || 2;
     var isAxisLabelsOn = viewOpts.axisLabelsVisible !== false;
 
-    ctx.save();
-    ctx.strokeStyle = aColor;
-    ctx.lineWidth = aWidth;
+    window.drawInfiniteAxes(ctx, { width: width, height: height }, xToPx(0), yToPx(0), {
+      color: aColor,
+      fontColor: viewOpts.fontColor || aColor,
+      lineWidth: aWidth,
+      fontSize: FONT.axis,
+      typography: viewOpts.typography,
+      showX: isXOn,
+      showY: isYOn,
+      showLabels: isAxisLabelsOn,
+      showOrigin: isAxisLabelsOn
+    });
 
-    if (isXOn) {
-      ctx.beginPath();
-      ctx.moveTo(xToPx(startX), yToPx(0));
-      ctx.lineTo(xToPx(endX), yToPx(0));
-      ctx.stroke();
-
-      if (isAxisLabelsOn) {
-        drawTextBox(ctx, "X", xToPx(endX) - 12, yToPx(0) - 16, { fontSize: FONT.axis, color: aColor });
-      }
+    var majorInterval = sharedDesign && Number(sharedDesign.majorEvery) > 0 ? Number(sharedDesign.majorEvery) : 5;
+    var stepX = tf.unitsPerSquareX * majorInterval;
+    var stepY = tf.unitsPerSquareY * majorInterval;
+    function axisLabel(value) {
+      var clean = Math.abs(value) < 1e-10 ? 0 : value;
+      return String(Number(clean.toFixed(8)));
     }
 
-    if (isYOn) {
-      ctx.beginPath();
-      ctx.moveTo(xToPx(0), yToPx(startY));
-      ctx.lineTo(xToPx(0), yToPx(endY));
-      ctx.stroke();
-
-      if (isAxisLabelsOn) {
-        drawTextBox(ctx, "Y", xToPx(0) + 14, yToPx(endY) + 26, { fontSize: FONT.axis, color: aColor });
-      }
-    }
-    ctx.restore();
-
-    var step = niceStepForLabels(scale);
-
     if (isXOn) {
-      for (var tx = Math.ceil(startX / step) * step; tx <= endX; tx += step) {
+      for (var tx = Math.ceil(startX / stepX) * stepX; tx <= endX; tx += stepX) {
         var px = xToPx(tx);
         var py = yToPx(0);
 
@@ -453,13 +443,13 @@
         ctx.restore();
 
         if (isAxisLabelsOn && tx !== 0) {
-          drawTextBox(ctx, String(tx), px + offsets.xTick.dx, py + offsets.xTick.dy, { fontSize: FONT.ticks, align: "center", color: aColor });
+          drawTextBox(ctx, axisLabel(tx), px + offsets.xTick.dx, py + offsets.xTick.dy, { fontSize: FONT.ticks, defaultFontSize: 16, typography: viewOpts.typography, align: "center", color: viewOpts.fontColor || aColor });
         }
       }
     }
 
     if (isYOn) {
-      for (var ty = Math.ceil(startY / step) * step; ty <= endY; ty += step) {
+      for (var ty = Math.ceil(startY / stepY) * stepY; ty <= endY; ty += stepY) {
         var py2 = yToPx(ty);
         var px2 = xToPx(0);
 
@@ -474,14 +464,11 @@
         ctx.restore();
 
         if (isAxisLabelsOn && ty !== 0) {
-          drawTextBox(ctx, String(ty), px2 + offsets.yTick.dx, py2 + offsets.yTick.dy, { fontSize: FONT.ticks, align: "right", color: aColor });
+          drawTextBox(ctx, axisLabel(ty), px2 + offsets.yTick.dx, py2 + offsets.yTick.dy, { fontSize: FONT.ticks, defaultFontSize: 16, typography: viewOpts.typography, align: "right", color: viewOpts.fontColor || aColor });
         }
       }
     }
 
-    if (isAxisLabelsOn && (isXOn || isYOn)) {
-      drawTextBox(ctx, "O", xToPx(0) + offsets.origin.dx, yToPx(0) + offsets.origin.dy, { fontSize: FONT.ticks, color: aColor });
-    }
   }
 
   function drawSetPolygon(ctx, set, tf) {
@@ -585,7 +572,7 @@
           }
         }
 
-        var bbox = drawTextBox(ctx, text, targetX, targetY, { fontSize: FONT.point, align: "left" });
+        var bbox = drawTextBox(ctx, text, targetX, targetY, { fontSize: FONT.point, defaultFontSize: 17, typography: settings.typography, align: "left" });
         labelBoxes.push({ setId: set.id, label: p.label, x: bbox.bx, y: bbox.by, w: bbox.bw, h: bbox.bh });
       }
     }
@@ -625,6 +612,8 @@
       fontAxis: 20,
       fontTicks: 16,
       fontPoint: 17,
+      fontSizePt: 11,
+      bold: false,
       minorTickWidth: 2,
       minorTickLen: 8,
       xTickDX: 0,
@@ -693,6 +682,14 @@
           point: state.fontPoint,
           caption: Math.max(14, state.fontTicks)
         },
+        typography: window.MathForgeGraphTypography
+          ? window.MathForgeGraphTypography.read(
+              document.getElementById("mfGraphFontSizePt"),
+              document.getElementById("mfGraphBold"),
+              document.getElementById("mfGraphFontFamily"),
+              document.getElementById("mfGraphFontColor")
+            )
+          : { fontSizePt: state.fontSizePt, bold: state.bold },
         minorTick: {
           width: state.minorTickWidth,
           len: state.minorTickLen
@@ -742,18 +739,20 @@
         gridVisible: state.gridVisible,
         gridColor: state.gridColor,
         gridOpacity: state.gridOpacity,
+        typography: settings.typography,
         xAxisVisible: state.xAxisVisible,
         yAxisVisible: state.yAxisVisible,
         axisColor: state.axisColor,
         axisWidth: state.axisWidth,
-        axisLabelsVisible: state.axisLabelsVisible
+        axisLabelsVisible: state.axisLabelsVisible,
+        fontColor: settings.typography.fontColor
       });
 
       drawDiagonalsForSets(ctx, state.pointSets, tf);
       for (var j = 0; j < state.pointSets.length; j++) {
         drawSet(ctx, state.pointSets[j], tf, settings, state.showLabels, labelBoxes, state.coordPrecision);
       }
-      drawTextBox(ctx, "Small grid = 1 unit", 16, logicalH - 14, { fontSize: settings.FONT.caption, align: "left" });
+      drawTextBox(ctx, "Small grid = 1 unit", 16, logicalH - 14, { fontSize: settings.FONT.caption, defaultFontSize: 16, typography: settings.typography, align: "left" });
     }
 
     function resetView() {
@@ -808,6 +807,10 @@
     var engine = createCoordinatesEngine();
     var state = engine.state;
     var drag = engine.getDrag();
+    var graphTypography = window.MathForgeGraphTypography;
+    var typographyHost = doc.getElementById("fontAxis");
+    typographyHost = typographyHost && typographyHost.closest ? typographyHost.closest(".body") : null;
+    var typographyControls = graphTypography && graphTypography.ensureControls(doc, "coord", typographyHost);
 
     var pointsInput = doc.getElementById("pointsInput");
     var marginUnitsEl = doc.getElementById("marginUnits");
@@ -900,6 +903,11 @@
       if (axisLabelsVisibleEl) state.axisLabelsVisible = axisLabelsVisibleEl.checked;
       if (canvasBgColorEl) state.canvasBgColor = canvasBgColorEl.value;
       if (viewZoomEl) state.viewZoom = Number(viewZoomEl.value) || 1.0;
+      if (typographyControls) {
+        var typography = graphTypography.read(typographyControls.sizeInput, typographyControls.boldInput);
+        state.fontSizePt = typography.fontSizePt;
+        state.bold = typography.bold;
+      }
 
       for (var c in controls) {
         if (controls.hasOwnProperty(c) && controls[c]) {
@@ -954,6 +962,12 @@
       }
       if (diagonalStyleEl) diagonalStyleEl.value = normalizeLineStyle(diag.style);
       if (showDiagonalsEl) showDiagonalsEl.checked = Boolean(diag.visible);
+      if (typographyControls) {
+        if (!window.MathForgeGraphDesignSettings) {
+          typographyControls.sizeInput.value = String(state.fontSizePt || 11);
+          typographyControls.boldInput.checked = Boolean(state.bold);
+        }
+      }
     }
 
     function rebuildPointControls(points) {
@@ -1368,6 +1382,19 @@
       }
     });
 
+    if (typographyControls) {
+      [typographyControls.sizeInput, typographyControls.boldInput].forEach(function (el) {
+        el.addEventListener("input", function () {
+          syncStateFromUI();
+          engine.draw(canvas);
+        });
+        el.addEventListener("change", function () {
+          syncStateFromUI();
+          engine.draw(canvas);
+        });
+      });
+    }
+
     for (var k in controls) {
       if (controls.hasOwnProperty(k) && controls[k]) {
         controls[k].addEventListener("input", function () {
@@ -1595,9 +1622,7 @@
               '</div>' +
               '<div id="mfCoordSetList" class="mf-coord-set-list"></div>' +
             '</div>' +
-            '<div class="mf-coord-section-title">Per-Point Styling</div>' +
-            '<div class="mf-coord-hint">Click &amp; drag labels on the canvas or adjust below:</div>' +
-            '<div id="mfCoordPointControls" class="mf-coord-point-controls"></div>';
+            '<div class="mf-coord-input-footnote">Point style settings are in Graph Designs.</div>';
 
           var panelContent = leftPanel.querySelector(".mf-panel-content");
           if (panelContent) {
@@ -1615,6 +1640,9 @@
             '<div class="mf-property-row"><span>Engine</span><span class="mf-property-value mf-text-accent-bold">Coordinates Graph</span></div>' +
             '<div class="mf-property-row"><span>Status</span><span class="mf-property-value mf-text-success">Integrated (Active)</span></div>' +
 
+            '<div class="mf-coord-section-title">Point &amp; Marker Styling</div>' +
+            '<div class="mf-coord-hint">Click &amp; drag labels on the canvas or adjust a point below:</div>' +
+            '<div id="mfCoordPointControls" class="mf-coord-point-controls"></div>' +
             '<div class="mf-coord-section-title">Polygon Controls</div>' +
             '<div class="mf-coord-row"><label><input id="mfCoordPolyVisible" type="checkbox" checked> Show polygon</label></div>' +
             '<div class="mf-coord-row"><label><input id="mfCoordPolyFillVisible" type="checkbox" checked> Show fill</label></div>' +
@@ -1649,6 +1677,21 @@
               '<button type="button" class="mf-coord-btn-sm" id="mfCoordResetBgBtn">Default BG</button>' +
             '</div>' +
             '</div>';
+          ["mfCoordGridVisible", "mfCoordGridColor", "mfCoordGridOpacity", "mfCoordXAxisVisible", "mfCoordYAxisVisible", "mfCoordAxisColor", "mfCoordAxisWidth", "mfCoordAxisLabelsVisible", "mfCoordShowLabels", "mfCoordBgColor", "mfCoordPolyBorderColor", "mfCoordPolyBorderWidth"].forEach(function (id) {
+            var input = document.getElementById(id);
+            var row = input && input.closest(".mf-coord-row, .mf-coord-style-row");
+            if (row) row.hidden = true;
+          });
+          Array.prototype.forEach.call(propContainer.querySelectorAll(".mf-coord-section-title"), function (title) {
+            if (/grid & axes|labels & view/i.test(title.textContent)) title.hidden = true;
+          });
+          if (window.MathForgeGraphTypography) {
+            window.MathForgeGraphTypography.ensureControls(
+              document,
+              "coord",
+              propContainer.querySelector(".mf-coord-properties")
+            );
+          }
         }
 
         // Enable toolbar buttons
@@ -1909,6 +1952,10 @@
           if (prec) prec.value = state.coordPrecision;
           var bgCol = document.getElementById("mfCoordBgColor");
           if (bgCol) bgCol.value = state.canvasBgColor;
+          var graphFontSize = document.getElementById("mfGraphFontSizePt");
+          if (graphFontSize) graphFontSize.value = String(state.fontSizePt || 11);
+          var graphBold = document.getElementById("mfGraphBold");
+          if (graphBold) graphBold.checked = Boolean(state.bold);
 
           updateZoomReadout();
         }
@@ -2337,6 +2384,7 @@
         // Initial sync and render
         syncActiveUI = syncUIFromActiveSet;
         syncUIFromActiveSet();
+        addListener(document, "mf:graph-design-changed", renderUI);
         renderUI();
       },
 
@@ -2400,12 +2448,19 @@
       setState: function (savedState) {
         if (!savedState || typeof savedState !== "object") return;
         Object.keys(state).forEach(function (key) {
-          if (!Object.prototype.hasOwnProperty.call(savedState, key)) delete state[key];
+          if (!Object.prototype.hasOwnProperty.call(savedState, key) && key !== "fontSizePt" && key !== "bold") delete state[key];
         });
         for (var k in savedState) {
           if (savedState.hasOwnProperty(k)) {
             state[k] = savedState[k];
           }
+        }
+        state.fontSizePt = Math.max(6, Math.min(36, Number(state.fontSizePt) || 11));
+        state.bold = Boolean(state.bold);
+        if (window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState) {
+          var sharedTypography = window.MathForgeGraphDesignSettings.getState();
+          state.fontSizePt = sharedTypography.fontSizePt;
+          state.bold = sharedTypography.bold;
         }
         if (typeof syncActiveUI === "function") {
           syncActiveUI();

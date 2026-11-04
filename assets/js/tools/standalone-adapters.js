@@ -136,11 +136,85 @@
     return view;
   }
 
+  function ratioForWorkspace() {
+    var settings = window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState();
+    if (!settings) return 4 / 3;
+    if (settings.ratio === "custom") return settings.customWidth / settings.customHeight;
+    var parts = settings.ratio.split(":").map(Number);
+    return parts[0] / parts[1];
+  }
+
+  function fitLogicalCanvasToRatio(definition, canvasView) {
+    if (!canvasSizeInputIds[definition.id]) return false;
+    var sizeInput = document.getElementById(canvasSizeInputIds[definition.id]);
+    var originInput = document.getElementById(definition.id === "equation-plotter" ? "origin" : definition.id === "ogive-curve" ? "o_origin" : "h_origin");
+    var size = sizeInput && window.parsePair && window.parsePair(sizeInput.value);
+    var origin = originInput && window.parsePair && window.parsePair(originInput.value);
+    if (!size || !(size[0] > 0 && size[1] > 0)) return false;
+    var width = Math.max(1, Math.floor(size[0]));
+    var height = Math.max(1, Math.round(width / ratioForWorkspace()));
+    if (height === Math.floor(size[1])) return false;
+    var originY = origin && size[1] > 0 ? Math.round(origin[1] * height / size[1]) : Math.round(height / 2);
+    if (sizeInput) sizeInput.value = width + "," + height;
+    if (originInput && origin) originInput.value = Math.round(origin[0]) + "," + originY;
+    if (canvasView && canvasView.setLogicalSize) canvasView.setLogicalSize(width, height);
+    if (sizeInput) sizeInput.dispatchEvent(new Event("input", { bubbles: true }));
+    if (originInput) originInput.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
   function setButtonEnabled(button, enabled, title) {
     if (!button) return;
     button.disabled = !enabled;
     button.setAttribute("aria-disabled", enabled ? "false" : "true");
     if (title) button.title = title;
+  }
+
+  function mountGraphSpecificControls(definition, controlsHost) {
+    var target = document.getElementById("mfPropertiesContainer");
+    var sourceBody = controlsHost.querySelector(".card .body");
+    if (!target || !sourceBody) return null;
+    if (target.querySelector(".mf-property-placeholder")) target.innerHTML = "";
+
+    var details = document.createElement("details");
+    details.className = "mf-tool-control-host mf-graph-specific-controls";
+    details.open = true;
+    details.setAttribute("data-tool-id", definition.id);
+    var summary = document.createElement("summary");
+    summary.textContent = definition.name + " settings";
+    var body = document.createElement("div");
+    body.className = "mf-graph-specific-body";
+    details.appendChild(summary);
+    details.appendChild(body);
+
+    var children = Array.prototype.slice.call(sourceBody.childNodes);
+    var startMoving = definition.id === "equation-plotter" ? false : true;
+    children.forEach(function (node) {
+      if (node.nodeType === 1 && node.classList.contains("tableCard")) {
+        startMoving = true;
+        return;
+      }
+      if (definition.id === "equation-plotter" && node.nodeType === 1 && node.classList.contains("sectionTitle") &&
+          /graph paper scale/i.test(node.textContent)) startMoving = true;
+      if (startMoving && !(node.nodeType === 1 && node.classList.contains("btns"))) body.appendChild(node);
+    });
+    if (!body.children.length) return null;
+
+    var sharedFieldIds = {
+      "equation-plotter": ["minorPx", "majorEvery", "zoom", "curveWidth", "axisFont", "tickFont", "labelFont", "xSmallPerUnit", "ySmallPerUnit"],
+      "ogive-curve": ["o_minorPx", "o_majorEvery", "o_zoom", "o_curveW", "o_fontAxis", "o_fontTicks", "o_fontPoint", "o_fontAxisLabel", "o_xSmallPerUnit", "o_ySmallPerUnit"],
+      "histogram-polygon": ["h_minorPx", "h_majorEvery", "h_zoom", "h_fontAxis", "h_fontTicks", "h_fontMid", "h_fontAxisLabel", "h_xSmallPerUnit", "h_ySmallPerUnit"]
+    }[definition.id] || [];
+    sharedFieldIds.forEach(function (id) {
+      var input = document.getElementById(id);
+      if (!input) return;
+      var row = input.closest(".row");
+      var wrapper = row || (input.parentElement && input.parentElement.tagName === "LABEL"
+        ? input.parentElement.parentElement : input.parentElement);
+      if (wrapper) wrapper.hidden = true;
+    });
+    target.appendChild(details);
+    return details;
   }
 
   function createAdapter(definition) {
@@ -151,6 +225,7 @@
     var toolbarCleanups = [];
     var savedState = null;
     var workspace = false;
+    var designHost = null;
 
     function bindToolbar(id, handler) {
       var button = document.getElementById(id);
@@ -181,6 +256,8 @@
       canvasElement = null;
       if (controlsHost && controlsHost.parentNode) controlsHost.parentNode.removeChild(controlsHost);
       controlsHost = null;
+      if (designHost && designHost.parentNode) designHost.parentNode.removeChild(designHost);
+      designHost = null;
     }
 
     var adapter = {
@@ -206,11 +283,13 @@
         controlsHost.setAttribute("aria-label", definition.name + " controls");
         controlsHost.innerHTML = template + definition.actions;
         host.appendChild(controlsHost);
+        designHost = mountGraphSpecificControls(definition, controlsHost);
 
         canvasElement = document.createElement("canvas");
         canvasElement.className = "mf-shared-graph-canvas";
         canvasElement.setAttribute("aria-label", definition.canvasLabel);
         container.appendChild(canvasElement);
+        fitLogicalCanvasToRatio(definition, null);
         var canvasSize = window.parsePair && window.parsePair(document.getElementById(canvasSizeInputIds[definition.id]).value);
         canvasView = makeCanvasView(canvasElement, container, options.dpr, canvasSize);
 
@@ -228,9 +307,18 @@
             var fitButton = document.getElementById(definition.id === "ogive-curve" ? "o_fitBtn" : "h_fitBtn");
             if (fitButton) fitButton.click();
           }
+          if (window.MathForgeGraphDesignSettings) window.MathForgeGraphDesignSettings.syncActiveTool();
         } catch (error) {
           adapterUnmount();
           throw error;
+        }
+        if (window.MathForgeGraphDesignSettings) {
+          var designChange = function () {
+            fitLogicalCanvasToRatio(definition, canvasView);
+            if (engineInstance) engineInstance.render();
+          };
+          document.addEventListener("mf:graph-design-changed", designChange);
+          toolbarCleanups.push(function () { document.removeEventListener("mf:graph-design-changed", designChange); });
         }
 
         var zoomId = zoomInputIds[definition.id];

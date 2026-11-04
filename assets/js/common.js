@@ -234,25 +234,58 @@
     ctx.fillRect(0,0,cv.width,cv.height);
   };
 
-  window.drawGraphPaper = function(ctx, cv, ox, oy, minorPx, majorEvery, zoom){
-    const mp = minorPx * zoom;
-    const majorPx = mp * majorEvery;
+  window.drawGraphPaper = function(ctx, cv, ox, oy, minorPx, majorEvery, zoom, options){
+    options = options || {};
+    const sharedDesign = window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState
+      ? window.MathForgeGraphDesignSettings.getState() : null;
+    const mp = Math.max(0.5, Math.abs(Number(minorPx) * Number(zoom || 1)));
+    const every = Math.max(2, Math.floor(Number(majorEvery) || 5));
+    const rawAlphaScale = Number(options.opacityScale ?? 1);
+    const alphaScale = Number.isFinite(rawAlphaScale) ? Math.max(0, rawAlphaScale) : 1;
+    const firstX = Math.ceil(-ox / mp);
+    const lastX = Math.floor((cv.width - ox) / mp);
+    const firstY = Math.ceil(-oy / mp);
+    const lastY = Math.floor((cv.height - oy) / mp);
 
     ctx.save();
-    ctx.strokeStyle = "#000";
+    ctx.fillStyle = sharedDesign ? sharedDesign.background : "#ffffff";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    if (sharedDesign && !sharedDesign.gridVisible) {
+      ctx.restore();
+      return;
+    }
+    ctx.strokeStyle = sharedDesign ? sharedDesign.gridColor : (options.color || "#000000");
+    ctx.globalAlpha = Math.min(1, 0.12 * alphaScale);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let i=firstX; i<=lastX; i++){
+      if(i % every === 0) continue;
+      const x = ox + i * mp;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, cv.height);
+    }
+    for(let i=firstY; i<=lastY; i++){
+      if(i % every === 0) continue;
+      const y = oy + i * mp;
+      ctx.moveTo(0, y);
+      ctx.lineTo(cv.width, y);
+    }
+    ctx.stroke();
 
-    ctx.globalAlpha = 0.12; ctx.lineWidth = 1;
-    for(let x=ox; x<=cv.width; x+=mp){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-    for(let x=ox; x>=0; x-=mp){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-    for(let y=oy; y<=cv.height; y+=mp){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
-    for(let y=oy; y>=0; y-=mp){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
-
-    ctx.globalAlpha = 0.35; ctx.lineWidth = 1.5;
-    for(let x=ox; x<=cv.width; x+=majorPx){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-    for(let x=ox; x>=0; x-=majorPx){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-    for(let y=oy; y<=cv.height; y+=majorPx){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
-    for(let y=oy; y>=0; y-=majorPx){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
-
+    ctx.globalAlpha = Math.min(1, 0.35 * alphaScale);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for(let i=Math.ceil(firstX / every) * every; i<=lastX; i+=every){
+      const x = ox + i * mp;
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, cv.height);
+    }
+    for(let i=Math.ceil(firstY / every) * every; i<=lastY; i+=every){
+      const y = oy + i * mp;
+      ctx.moveTo(0, y);
+      ctx.lineTo(cv.width, y);
+    }
+    ctx.stroke();
     ctx.restore();
   };
 
@@ -266,25 +299,102 @@
     ctx.fill();
   };
 
-  window.drawAxes = function(ctx, cv, ox, oy, fonts){
+  window.drawInfiniteAxes = function(ctx, cv, ox, oy, options){
+    options = options || {};
+    const width = Number(cv.width), height = Number(cv.height);
+    const xVisible = options.showX !== false && Number.isFinite(oy) && oy >= 0 && oy <= height;
+    const yVisible = options.showY !== false && Number.isFinite(ox) && ox >= 0 && ox <= width;
+    if (!xVisible && !yVisible) return { xVisible, yVisible, originVisible: false };
+
+    const inset = Math.max(7, Math.min(10, Number(options.arrowSize) || 9));
+    const arrowSize = Math.max(5, Math.min(12, Number(options.arrowSize) || 9));
+    const color = options.color || "#000000";
+    const fontColor = options.fontColor || color;
+    const lineWidth = Math.max(1, Number(options.lineWidth) || 2);
+    const fontSize = Math.max(8, Number(options.fontSize) || 14);
+    const typography = window.MathForgeGraphTypography;
+    const axisFont = typography
+      ? typography.font(fontSize, options.typography)
+      : fontSize + 'px "Times New Roman", "Kalpurush", serif';
+
+    function drawTip(x, y, dx, dy){
+      const baseX = x - dx * arrowSize;
+      const baseY = y - dy * arrowSize;
+      const wing = arrowSize * 0.52;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(baseX - dy * wing, baseY + dx * wing);
+      ctx.lineTo(baseX + dy * wing, baseY - dx * wing);
+      ctx.closePath();
+      ctx.fill();
+    }
+
     ctx.save();
-    ctx.strokeStyle = "#000";
-    ctx.fillStyle = "#000";
-    ctx.globalAlpha = 0.95;
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = "butt";
+    if (xVisible) {
+      ctx.beginPath();
+      ctx.moveTo(inset, oy);
+      ctx.lineTo(width - inset, oy);
+      ctx.stroke();
+      drawTip(inset, oy, -1, 0);
+      drawTip(width - inset, oy, 1, 0);
+    }
+    if (yVisible) {
+      ctx.beginPath();
+      ctx.moveTo(ox, height - inset);
+      ctx.lineTo(ox, inset);
+      ctx.stroke();
+      drawTip(ox, inset, 0, -1);
+      drawTip(ox, height - inset, 0, 1);
+    }
 
-    ctx.beginPath(); ctx.moveTo(0,oy); ctx.lineTo(cv.width,oy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(ox,cv.height); ctx.lineTo(ox,0); ctx.stroke();
+    if (options.showLabels !== false) {
+      ctx.fillStyle = fontColor;
+      ctx.font = axisFont;
+      ctx.textBaseline = "middle";
+      if (xVisible) {
+        const labelY = oy < fontSize + 5 ? oy + fontSize + 5 : oy - fontSize - 3;
+        ctx.textAlign = "left";
+        ctx.fillText("X′", inset + arrowSize + 4, labelY);
+        ctx.textAlign = "right";
+        ctx.fillText("X", width - inset - arrowSize - 4, labelY);
+      }
+      if (yVisible) {
+        const labelX = ox > width - fontSize * 2 ? ox - 8 : ox + 8;
+        ctx.textAlign = ox > width - fontSize * 2 ? "right" : "left";
+        ctx.textBaseline = "top";
+        ctx.fillText("Y", labelX, inset + arrowSize + 2);
+        ctx.textBaseline = "bottom";
+        ctx.fillText("Y′", labelX, height - inset - arrowSize - 2);
+      }
 
-    window.arrowhead(ctx, 0, oy, cv.width, oy, 10);
-    window.arrowhead(ctx, ox, cv.height, ox, 0, 10);
-
-    ctx.font = `${fonts.axis}px system-ui`;
-    ctx.fillText("X", cv.width-18, oy+18);
-    ctx.fillText("Y", ox+10, 16);
-    ctx.fillText("O", ox+6, oy-6);
-
+      const originVisible = xVisible && yVisible;
+      if (originVisible && options.showOrigin !== false) {
+        const originX = ox > width - fontSize * 2 ? ox - 7 : ox + 7;
+        const originY = oy > fontSize + 4 ? oy - 7 : oy + 7;
+        ctx.textAlign = ox > width - fontSize * 2 ? "right" : "left";
+        ctx.textBaseline = oy > fontSize + 4 ? "bottom" : "top";
+        ctx.fillText("O", originX, originY);
+      }
+    }
     ctx.restore();
+    return { xVisible, yVisible, originVisible: xVisible && yVisible };
+  };
+
+  window.drawAxes = function(ctx, cv, ox, oy, fonts){
+    const sharedDesign = window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState
+      ? window.MathForgeGraphDesignSettings.getState() : null;
+    if (sharedDesign && !sharedDesign.axesVisible) return;
+    window.drawInfiniteAxes(ctx, cv, ox, oy, {
+      color: sharedDesign ? sharedDesign.axisColor : "#000",
+      fontColor: sharedDesign ? sharedDesign.fontColor : "#000",
+      lineWidth: 2,
+      fontSize: fonts.axis,
+      typography: fonts.typography
+    });
   };
 
   window.drawAxisBreakGlyph = function(ctx, params){
@@ -322,9 +432,13 @@
     const st = Math.max(1, Number(step) || 1);
 
     ctx.save();
-    ctx.fillStyle = "#000";
-    ctx.strokeStyle = "#000";
-    ctx.font = `${fonts.ticks}px system-ui`;
+    const sharedDesign = window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState
+      ? window.MathForgeGraphDesignSettings.getState() : null;
+    if (sharedDesign && !sharedDesign.axesVisible) return;
+    ctx.fillStyle = sharedDesign ? sharedDesign.fontColor : "#000";
+    ctx.strokeStyle = sharedDesign ? sharedDesign.axisColor : "#000";
+    const typography = window.MathForgeGraphTypography;
+    ctx.font = typography ? typography.font(fonts.ticks, fonts.typography) : `${fonts.ticks}px "Times New Roman", "Kalpurush", serif`;
     ctx.globalAlpha = 0.95;
 
     for(let y=0; y<=yMax; y+=st){
@@ -348,9 +462,13 @@
     const {oy} = params;
 
     ctx.save();
-    ctx.fillStyle = "#000";
-    ctx.strokeStyle = "#000";
-    ctx.font = `${fonts.ticks}px system-ui`;
+    const sharedDesign = window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState
+      ? window.MathForgeGraphDesignSettings.getState() : null;
+    if (sharedDesign && !sharedDesign.axesVisible) return;
+    ctx.fillStyle = sharedDesign ? sharedDesign.fontColor : "#000";
+    ctx.strokeStyle = sharedDesign ? sharedDesign.axisColor : "#000";
+    const typography = window.MathForgeGraphTypography;
+    ctx.font = typography ? typography.font(fonts.ticks, fonts.typography) : `${fonts.ticks}px "Times New Roman", "Kalpurush", serif`;
     ctx.globalAlpha = 0.95;
 
     const tickLen = 6;
@@ -377,6 +495,9 @@
   // page just to share this drawing code.
   window.drawAxisAnnotations = function(ctx, cv, params, annotation){
     if(!annotation || annotation.show === false) return;
+    const sharedDesign = window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState
+      ? window.MathForgeGraphDesignSettings.getState() : null;
+    if (sharedDesign && !sharedDesign.axesVisible) return;
 
     const xTextRaw = annotation.xText || "";
     const yTextRaw = annotation.yText || "";
@@ -390,9 +511,10 @@
     const yText = addArrows ? yTextRaw : yTextRaw.replace(/[↑⬆]/g, "").trim();
 
     ctx.save();
-    ctx.fillStyle = "#000";
+    ctx.fillStyle = sharedDesign ? sharedDesign.fontColor : "#000";
     ctx.globalAlpha = 0.95;
-    ctx.font = `${size}px system-ui`;
+    const typography = window.MathForgeGraphTypography;
+    ctx.font = typography ? typography.font(size, annotation.typography) : `${size}px "Times New Roman", "Kalpurush", serif`;
 
     ctx.textAlign = "center";
     ctx.textBaseline = "top";

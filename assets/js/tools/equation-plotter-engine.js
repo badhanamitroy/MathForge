@@ -8,6 +8,16 @@ function mount(options) {
   var canvasView = options.canvasView || null;
   var controlRoot = options.controlsRoot || document;
   var cleanups = [];
+  function getToolControls(selector) {
+    var elements = [];
+    [controlRoot, document.querySelector("#mfPropertiesContainer .mf-graph-specific-controls")].forEach(function (root) {
+      if (!root || !root.querySelectorAll) return;
+      Array.prototype.forEach.call(root.querySelectorAll(selector), function (element) {
+        if (elements.indexOf(element) === -1) elements.push(element);
+      });
+    });
+    return elements;
+  }
   function listen(target, type, handler, listenerOptions) {
     target.addEventListener(type, handler, listenerOptions);
     cleanups.push(function () { target.removeEventListener(type, handler, listenerOptions); });
@@ -18,6 +28,18 @@ function mount(options) {
   let clearRequested = false;
 
   const $ = (id) => document.getElementById(id);
+  const graphTypography = window.MathForgeGraphTypography;
+  const typographyControls = graphTypography && graphTypography.ensureControls(controlRoot, "eq");
+
+  function readTypography() {
+    return typographyControls ? graphTypography.read(typographyControls.sizeInput, typographyControls.boldInput, typographyControls.familyInput, typographyControls.colorInput) : { fontSizePt: 11, bold: false };
+  }
+
+  function graphFont(controlSizePx, defaultSizePx, typography) {
+    return graphTypography
+      ? graphTypography.font(graphTypography.scaledSizePx(controlSizePx, defaultSizePx, typography), typography)
+      : `${controlSizePx}px "Times New Roman", "Kalpurush", serif`;
+  }
 
   const valSpans = {
     zoomVal: $('zoomVal'),
@@ -103,37 +125,13 @@ function mount(options) {
     return [x, y];
   }
 
-  function clear() { ctx.clearRect(0,0,cv.width,cv.height); }
-
-  function drawGraphPaper(ox, oy, minorPx, majorEvery, zoom) {
-    const mp = minorPx * zoom;
-    const majorPx = mp * majorEvery;
-
-    ctx.save();
-    ctx.strokeStyle = "#000";
-
-    // Minor grid
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.12;
-
-    for (let x = ox; x <= cv.width; x += mp) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-    for (let x = ox; x >= 0; x -= mp)        { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-
-    for (let y = oy; y <= cv.height; y += mp){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
-    for (let y = oy; y >= 0; y -= mp)        { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
-
-    // Major grid
-    ctx.globalAlpha = 0.35;
-    ctx.lineWidth = 1.5;
-
-    for (let x = ox; x <= cv.width; x += majorPx) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-    for (let x = ox; x >= 0; x -= majorPx)        { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,cv.height); ctx.stroke(); }
-
-    for (let y = oy; y <= cv.height; y += majorPx){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
-    for (let y = oy; y >= 0; y -= majorPx)        { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(cv.width,y); ctx.stroke(); }
-
-    ctx.restore();
+  function sharedAxisRate(axis, fallback) {
+    return window.MathForgeGraphScale
+      ? window.MathForgeGraphScale.effectiveRate(axis, fallback)
+      : Number(fallback);
   }
+
+  function clear() { ctx.clearRect(0,0,cv.width,cv.height); }
 
   function arrowhead(x1, y1, x2, y2, size=10) {
     const ang = Math.atan2(y2-y1, x2-x1);
@@ -145,44 +143,42 @@ function mount(options) {
     ctx.fill();
   }
 
-  function drawAxes(ox, oy, axisWidth, axisFontPx, tickFontPx, minorPx, xSmallPerUnit, ySmallPerUnit, zoom) {
+  function drawAxes(ox, oy, axisWidth, axisFontPx, tickFontPx, minorPx, xSmallPerUnit, ySmallPerUnit, zoom, typography) {
+    const design = window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState();
+    if (design && !design.axesVisible) return;
     ctx.save();
-    ctx.strokeStyle = "#000";
-    ctx.fillStyle = "#000";
+    ctx.strokeStyle = design ? design.axisColor : "#000";
+    ctx.fillStyle = design ? design.fontColor : "#000";
     ctx.globalAlpha = 0.95;
     ctx.lineWidth = axisWidth;
 
-    // axes
-    ctx.beginPath(); ctx.moveTo(0,oy); ctx.lineTo(cv.width,oy); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(ox,cv.height); ctx.lineTo(ox,0); ctx.stroke();
-
-    arrowhead(0, oy, cv.width, oy, 10);
-    arrowhead(ox, cv.height, ox, 0, 10);
-
-    ctx.font = `${axisFontPx}px system-ui`;
-    ctx.fillText("X", cv.width - 18, oy + 18);
-    ctx.fillText("X′", 6, oy + 18);
-    ctx.fillText("Y", ox + 10, 16);
-    ctx.fillText("Y′", ox + 10, cv.height - 10);
-    ctx.fillText("O", ox + 6, oy - 6);
+    window.drawInfiniteAxes(ctx, cv, ox, oy, {
+      color: design ? design.axisColor : "#000",
+      fontColor: design ? design.fontColor : "#000",
+      lineWidth: axisWidth,
+      fontSize: axisFontPx,
+      typography: typography
+    });
 
     // ticks + numbers
-    ctx.font = `${tickFontPx}px system-ui`;
+    ctx.font = graphFont(tickFontPx, 12, typography);
     ctx.lineWidth = 1;
 
     const mp = minorPx * zoom;
     const sx = mp * xSmallPerUnit;
     const sy = mp * ySmallPerUnit;
 
-    const maxXUnits = Math.ceil(Math.max(ox, cv.width-ox)/sx);
-    const maxYUnits = Math.ceil(Math.max(oy, cv.height-oy)/sy);
+    const minXUnit = Math.ceil(-ox / sx);
+    const maxXUnit = Math.floor((cv.width - ox) / sx);
+    const minYUnit = Math.ceil((oy - cv.height) / sy);
+    const maxYUnit = Math.floor(oy / sy);
 
-    for (let i=-maxXUnits; i<=maxXUnits; i++) {
+    for (let i=minXUnit; i<=maxXUnit; i++) {
       const x = ox + i*sx;
       ctx.beginPath(); ctx.moveTo(x, oy-4); ctx.lineTo(x, oy+4); ctx.stroke();
       if (i!==0 && i%2===0) ctx.fillText(String(i), x-4, oy+16);
     }
-    for (let j=-maxYUnits; j<=maxYUnits; j++) {
+    for (let j=minYUnit; j<=maxYUnit; j++) {
       const y = oy - j*sy;
       ctx.beginPath(); ctx.moveTo(ox-4, y); ctx.lineTo(ox+4, y); ctx.stroke();
       if (j!==0 && j%2===0) ctx.fillText(String(j), ox+8, y+4);
@@ -208,7 +204,7 @@ function mount(options) {
     const xMax = (cv.width - ox) / sx;
 
     ctx.save();
-    ctx.strokeStyle = "#000";
+    ctx.strokeStyle = window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().lineColor : "#000";
     ctx.lineWidth = curveWidth;
     ctx.globalAlpha = 1;
 
@@ -357,7 +353,7 @@ function mount(options) {
     const p = points.map(([x,y]) => worldToCanvas(x,y,ox,oy,minorPx,xSmallPerUnit,ySmallPerUnit,zoom));
 
     ctx.save();
-    ctx.strokeStyle = "#000";
+    ctx.strokeStyle = window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().lineColor : "#000";
     ctx.lineWidth = curveWidth;
     ctx.globalAlpha = 1;
 
@@ -382,13 +378,13 @@ function mount(options) {
     return n.toFixed(decimals).replace(/0+$/,'').replace(/\.$/,'');
   }
 
-  function drawPointsAndLabels(points, ox, oy, minorPx, xSmallPerUnit, ySmallPerUnit, showPoints, showLabels, labelFontPx, decimals, zoom) {
+  function drawPointsAndLabels(points, ox, oy, minorPx, xSmallPerUnit, ySmallPerUnit, showPoints, showLabels, labelFontPx, decimals, zoom, typography) {
     pointHitBoxes = [];
     labelHitBoxes = [];
 
     ctx.save();
-    ctx.fillStyle = "#000";
-    ctx.font = `${labelFontPx}px system-ui`;
+    ctx.fillStyle = window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().fontColor : "#000";
+    ctx.font = graphFont(labelFontPx, 13, typography);
 
     for (let i=0; i<points.length; i++) {
       const [x,y] = points[i];
@@ -468,8 +464,8 @@ function mount(options) {
 
     const minorPx = Number($('minorPx').value);
     const majorEvery = Number($('majorEvery').value);
-    const xSmallPerUnit = Number($('xSmallPerUnit').value);
-    const ySmallPerUnit = Number($('ySmallPerUnit').value);
+    const xSmallPerUnit = sharedAxisRate("x", Number($('xSmallPerUnit').value));
+    const ySmallPerUnit = sharedAxisRate("y", Number($('ySmallPerUnit').value));
     const decimals = Math.max(0, Math.min(10, Number($('decimals').value) || 2));
     const zoom = Number($('zoom').value);
 
@@ -491,8 +487,9 @@ function mount(options) {
     ensureLabelOffsets(points);
 
     clear();
-    drawGraphPaper(ox, oy, minorPx, majorEvery, zoom);
-    drawAxes(ox, oy, axisWidth, axisFontPx, tickFontPx, minorPx, xSmallPerUnit, ySmallPerUnit, zoom);
+    const typography = readTypography();
+    window.drawGraphPaper(ctx, cv, ox, oy, minorPx, majorEvery, zoom);
+    drawAxes(ox, oy, axisWidth, axisFontPx, tickFontPx, minorPx, xSmallPerUnit, ySmallPerUnit, zoom, typography);
 
     if (!clearRequested) {
       if (mode === "points") {
@@ -500,7 +497,7 @@ function mount(options) {
       } else {
         drawCurveFromFunction($('fn').value, ox, oy, curveWidth, minorPx, xSmallPerUnit, ySmallPerUnit, zoom);
       }
-      drawPointsAndLabels(points, ox, oy, minorPx, xSmallPerUnit, ySmallPerUnit, showPoints, showLabels, labelFontPx, decimals, zoom);
+      drawPointsAndLabels(points, ox, oy, minorPx, xSmallPerUnit, ySmallPerUnit, showPoints, showLabels, labelFontPx, decimals, zoom, typography);
     }
   }
 
@@ -540,6 +537,10 @@ function mount(options) {
     $('axisFont').value = 14;
     $('tickFont').value = 12;
     $('labelFont').value = 13;
+    if (typographyControls) {
+      typographyControls.sizeInput.value = String(graphTypography.defaultSizePt);
+      typographyControls.boldInput.checked = false;
+    }
 
     $('csize').value = "920,560";
     $('origin').value = "480,300";
@@ -575,8 +576,8 @@ function mount(options) {
       const [ox,oy] = origin;
 
       const minorPx = Number($('minorPx').value);
-      const xSmallPerUnit = Number($('xSmallPerUnit').value);
-      const ySmallPerUnit = Number($('ySmallPerUnit').value);
+      const xSmallPerUnit = sharedAxisRate("x", Number($('xSmallPerUnit').value));
+      const ySmallPerUnit = sharedAxisRate("y", Number($('ySmallPerUnit').value));
       const zoom = Number($('zoom').value);
 
       if (drag.mode === "point"){
@@ -697,16 +698,20 @@ function mount(options) {
   ['zoom','curveWidth','axisFont','tickFont','labelFont'].forEach(id => {
     listen($(id), 'input', () => { refreshValueLabels(); redraw(); });
   });
+  if (typographyControls) {
+    listen(typographyControls.sizeInput, "input", redraw);
+    listen(typographyControls.boldInput, "change", redraw);
+  }
 
   refreshValueLabels();
   redraw();
 
 
   function captureState() {
-    var controls = Array.prototype.slice.call(controlRoot.querySelectorAll('input, textarea, select')).map(function (element) {
+    var controls = getToolControls('input, textarea, select').map(function (element) {
       return { id: element.id || '', type: element.type || element.tagName.toLowerCase(), value: element.value, checked: Boolean(element.checked) };
     });
-    var tables = Array.prototype.slice.call(controlRoot.querySelectorAll('table[id]')).map(function (table) {
+    var tables = getToolControls('table[id]').map(function (table) {
       return { id: table.id, rows: Array.prototype.slice.call(table.tBodies[0] ? table.tBodies[0].rows : []).map(function (row) {
         return Array.prototype.slice.call(row.querySelectorAll('input')).map(function (input) { return input.value; });
       }) };
@@ -722,7 +727,7 @@ function mount(options) {
         grid.textToTable(tableState.rows.map(function (row) { return row.join(','); }).join('\n'));
       }
     });
-    var controls = Array.prototype.slice.call(controlRoot.querySelectorAll('input, textarea, select'));
+    var controls = getToolControls('input, textarea, select');
     saved.controls.forEach(function (item, index) {
       var element = item.id ? document.getElementById(item.id) : controls[index];
       if (!element || element.type === 'file') return;

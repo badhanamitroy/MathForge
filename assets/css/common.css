@@ -1,4 +1,27 @@
 /* assets/css/common.css */
+@font-face{
+  font-family:"Kalpurush";
+  src:url("../fonts/kalpurush.ttf") format("truetype");
+  font-style:normal;
+  font-weight:400;
+  font-display:swap;
+}
+
+.mfGraphTypography{
+  display:grid;
+  gap:8px;
+  margin-top:14px;
+  padding:12px;
+  border:1px solid rgba(148,163,184,.24);
+  border-radius:10px;
+}
+.mfGraphTypography-title{font-weight:700}
+.mfGraphTypography label{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.mfGraphTypography label span{margin-left:auto;opacity:.75}
+.mfGraphTypography input[type="number"]{width:84px;box-sizing:border-box}
+.mfGraphTypography .mfGraphTypography-bold{justify-content:flex-start}
+.mfGraphTypography .mfGraphTypography-bold input{margin:0}
+
 :root{
   --bg-900: #070d18;
   --bg-800: #0d1628;

@@ -12,6 +12,16 @@ function mount(options) {
   var canvasView = options.canvasView || null;
   var controlRoot = options.controlsRoot || document;
   var cleanups = [];
+  function getToolControls(selector) {
+    var elements = [];
+    [controlRoot, document.querySelector("#mfPropertiesContainer .mf-graph-specific-controls")].forEach(function (root) {
+      if (!root || !root.querySelectorAll) return;
+      Array.prototype.forEach.call(root.querySelectorAll(selector), function (element) {
+        if (elements.indexOf(element) === -1) elements.push(element);
+      });
+    });
+    return elements;
+  }
   function listen(target, type, handler, listenerOptions) {
     target.addEventListener(type, handler, listenerOptions);
     cleanups.push(function () { target.removeEventListener(type, handler, listenerOptions); });
@@ -29,6 +39,22 @@ function mount(options) {
   const cv = canvasView || document.getElementById("h_cv");
   const ctx = cv.getContext('2d');
   const $ = (id) => document.getElementById(id);
+  const graphTypography = window.MathForgeGraphTypography;
+  const typographyControls = graphTypography && graphTypography.ensureControls(controlRoot, "histogram");
+
+  function readTypography() {
+    return typographyControls ? graphTypography.read(typographyControls.sizeInput, typographyControls.boldInput, typographyControls.familyInput, typographyControls.colorInput) : { fontSizePt: 11, bold: false };
+  }
+
+  function sharedAxisRate(axis, fallback) {
+    return window.MathForgeGraphScale
+      ? window.MathForgeGraphScale.effectiveRate(axis, fallback)
+      : Number(fallback);
+  }
+
+  function graphFont(sizePx, typography) {
+    return graphTypography ? graphTypography.font(sizePx, typography) : `${sizePx}px "Times New Roman", "Kalpurush", serif`;
+  }
 
   function setVal(spanId, inputId){
     const s = $(spanId), i = $(inputId);
@@ -50,7 +76,8 @@ function mount(options) {
       addArrows: $('h_axisLabelArrows')?.checked,
       xOffset: $('h_xLabelOffset')?.value,
       yOffset: $('h_yLabelOffset')?.value,
-      fontSize: $('h_fontAxisLabel')?.value,
+      fontSize: graphTypography.scaledSizePx(Number($('h_fontAxisLabel')?.value ?? 18), 18, readTypography()),
+      typography: readTypography(),
     };
   }
 
@@ -82,10 +109,12 @@ function mount(options) {
   }
 
   function readFonts(){
+    const typography = readTypography();
     return {
-      axis: Number($('h_fontAxis')?.value ?? 16),
-      ticks: Number($('h_fontTicks')?.value ?? 14),
-      mid: Number($('h_fontMid')?.value ?? 12),
+      axis: graphTypography.scaledSizePx(Number($('h_fontAxis')?.value ?? 16), 16, typography),
+      ticks: graphTypography.scaledSizePx(Number($('h_fontTicks')?.value ?? 14), 14, typography),
+      mid: graphTypography.scaledSizePx(Number($('h_fontMid')?.value ?? 12), 12, typography),
+      typography: typography,
     };
   }
 
@@ -99,7 +128,7 @@ function mount(options) {
   function drawHistogram(rows, params){
     const alpha = Math.max(0, Math.min(1, Number($('h_barAlpha')?.value ?? 0.18)));
     ctx.save();
-    ctx.fillStyle = "#000";
+    ctx.fillStyle = window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().lineColor : "#000";
 
     for(const r of rows){
       const [x1,y0] = worldToCanvas(r.lo, 0, params);
@@ -115,8 +144,8 @@ function mount(options) {
     }
 
     ctx.globalAlpha = 0.45;
-    ctx.strokeStyle = "#000";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().lineColor : "#000";
+    ctx.lineWidth = window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().lineWidth : 1;
 
     for(const r of rows){
       const [x1,y0] = worldToCanvas(r.lo, 0, params);
@@ -141,10 +170,10 @@ function mount(options) {
     const end   = {x: rows[rows.length-1].hi, y:0};
 
     ctx.save();
-    ctx.strokeStyle = "#000";
+    ctx.strokeStyle = window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().lineColor : "#000";
     ctx.globalAlpha = 1;
 
-    ctx.lineWidth = 4;
+    ctx.lineWidth = window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().lineWidth : 4;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
 
@@ -162,7 +191,7 @@ function mount(options) {
     ctx.stroke();
 
     if($('h_showMidDots')?.checked){
-      ctx.fillStyle="#000";
+      ctx.fillStyle=window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().fontColor : "#000";
       for(const p of mids){
         const [px,py] = worldToCanvas(p.x,p.y, params);
         ctx.beginPath();
@@ -172,8 +201,8 @@ function mount(options) {
     }
 
     if($('h_showMidLabels')?.checked){
-      ctx.fillStyle="#000";
-      ctx.font = `${fonts.mid}px system-ui`;
+      ctx.fillStyle=window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState().fontColor : "#000";
+      ctx.font = graphFont(fonts.mid, fonts.typography);
       ctx.textAlign="center";
       ctx.textBaseline="bottom";
       for(const p of mids){
@@ -191,8 +220,8 @@ function mount(options) {
 
     const minorPx = Number($('h_minorPx').value);
     const majorEvery = Number($('h_majorEvery').value);
-    const xSmallPerUnit = Number($('h_xSmallPerUnit').value);
-    const ySmallPerUnit = Number($('h_ySmallPerUnit').value);
+    const xSmallPerUnit = sharedAxisRate("x", Number($('h_xSmallPerUnit').value));
+    const ySmallPerUnit = sharedAxisRate("y", Number($('h_ySmallPerUnit').value));
 
     const {minX,maxX,maxY} = computeBounds(rows);
 
@@ -238,8 +267,8 @@ function mount(options) {
         ox,oy,
         minorPx,
         majorEvery,
-        xSmallPerUnit: Number($('h_xSmallPerUnit').value),
-        ySmallPerUnit: Number($('h_ySmallPerUnit').value),
+        xSmallPerUnit: sharedAxisRate("x", Number($('h_xSmallPerUnit').value)),
+        ySmallPerUnit: sharedAxisRate("y", Number($('h_ySmallPerUnit').value)),
         zoom,
         breakFrom,
         breakTo,
@@ -312,8 +341,8 @@ function mount(options) {
 
     const minorPx = Number($('h_minorPx').value);
     const majorEvery = Number($('h_majorEvery').value);
-    const xSmallPerUnit = Number($('h_xSmallPerUnit').value);
-    const ySmallPerUnit = Number($('h_ySmallPerUnit').value);
+    const xSmallPerUnit = sharedAxisRate("x", Number($('h_xSmallPerUnit').value));
+    const ySmallPerUnit = sharedAxisRate("y", Number($('h_ySmallPerUnit').value));
 
     const rows = parseData($('h_data').value);
     const minBoundary = Math.min(...rows.map(r => r.lo));
@@ -403,16 +432,21 @@ function mount(options) {
     if(el) listen(el, "input", ()=>{ refreshVals(); redraw(); });
   });
 
+  if (typographyControls) {
+    listen(typographyControls.sizeInput, "input", redraw);
+    listen(typographyControls.boldInput, "change", redraw);
+  }
+
   refreshVals();
   redraw();
   setCursor("can-grab");
 
 
   function captureState() {
-    var controls = Array.prototype.slice.call(controlRoot.querySelectorAll('input, textarea, select')).map(function (element) {
+    var controls = getToolControls('input, textarea, select').map(function (element) {
       return { id: element.id || '', type: element.type || element.tagName.toLowerCase(), value: element.value, checked: Boolean(element.checked) };
     });
-    var tables = Array.prototype.slice.call(controlRoot.querySelectorAll('table[id]')).map(function (table) {
+    var tables = getToolControls('table[id]').map(function (table) {
       return { id: table.id, rows: Array.prototype.slice.call(table.tBodies[0] ? table.tBodies[0].rows : []).map(function (row) {
         return Array.prototype.slice.call(row.querySelectorAll('input')).map(function (input) { return input.value; });
       }) };
@@ -428,7 +462,7 @@ function mount(options) {
         grid.textToTable(tableState.rows.map(function (row) { return row.join(','); }).join('\n'));
       }
     });
-    var controls = Array.prototype.slice.call(controlRoot.querySelectorAll('input, textarea, select'));
+    var controls = getToolControls('input, textarea, select');
     saved.controls.forEach(function (item, index) {
       var element = item.id ? document.getElementById(item.id) : controls[index];
       if (!element || element.type === 'file') return;
