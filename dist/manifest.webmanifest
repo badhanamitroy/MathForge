@@ -1,0 +1,35 @@
+{
+  "id": "./",
+  "name": "MathForge — Mathematical Workspace",
+  "short_name": "MathForge",
+  "description": "Offline mathematical graphing and project workspace.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#202124",
+  "theme_color": "#202124",
+  "icons": [
+    {
+      "src": "assets/img/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/img/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "file_handlers": [
+    {
+      "action": "./open-project",
+      "accept": {
+        "application/json": [
+          ".mathforge"
+        ]
+      }
+    }
+  ]
+}

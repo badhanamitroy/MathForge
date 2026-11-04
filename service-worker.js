@@ -1,6 +1,6 @@
 "use strict";
 
-var CACHE_NAME = "mathforge-shell-v4";
+var CACHE_NAME = "mathforge-shell-v6";
 var APP_SCOPE = self.registration.scope;
 var SHELL_URL = new URL("index.html", APP_SCOPE).href;
 var OPEN_PROJECT_PATH = new URL("open-project", APP_SCOPE).pathname;
@@ -16,6 +16,9 @@ var APP_ASSETS = [
   "assets/css/tools/coordinates-tool.css",
   "assets/css/tools/shared-graph-controls.css",
   "assets/js/common.js",
+  "assets/js/core/graph-scale.js",
+  "assets/js/core/graph-typography.js",
+  "assets/js/core/graph-design-settings.js",
   "assets/js/workspace-core.js",
   "assets/js/project-manager.js",
   "assets/js/core/project-file-adapter.js",
@@ -28,7 +31,8 @@ var APP_ASSETS = [
   "assets/js/tools/standalone-bridge.js",
   "assets/img/MathForge Logo.png",
   "assets/img/pwa-192.png",
-  "assets/img/pwa-512.png"
+  "assets/img/pwa-512.png",
+  "assets/fonts/kalpurush.ttf"
 ];
 
 self.addEventListener("install", function (event) {

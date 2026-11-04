@@ -1,0 +1,457 @@
+/**
+ * coordinates-tool.css
+ * MathForge — Coordinates Graph Tool Component Stylesheet
+ * Scoped styles for Coordinates Graph controls in both Standalone and Workspace modes
+ */
+
+/* ==========================================================================
+   Shared Controls & Inputs Styling
+   ========================================================================== */
+.mf-coord-section-title {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #d9e8ff;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.mf-coord-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.mf-coord-row label {
+  flex: 1;
+  color: var(--mf-text-muted, #94a3b8);
+  font-size: 12px;
+}
+
+.mf-coord-row input[type="range"] {
+  width: 140px;
+}
+
+.mf-coord-row .val {
+  width: 50px;
+  text-align: right;
+  color: var(--mf-text-main, #e2e8f0);
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.mf-coord-style-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--mf-text-muted, #94a3b8);
+  font-size: 12px;
+}
+
+.mf-coord-style-row input[type="color"] {
+  width: 44px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(10, 17, 29, 0.7);
+  padding: 2px;
+  cursor: pointer;
+}
+
+.mf-coord-style-row select,
+.mf-coord-row select {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(10, 17, 29, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  color: var(--mf-text-main, #edf5ff);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  outline: none;
+}
+
+.mf-coord-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(10, 17, 29, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  color: var(--mf-text-main, #edf5ff);
+  border-radius: 8px;
+  padding: 8px 10px;
+  outline: none;
+  font-size: 13px;
+  font-family: monospace, monospace;
+  min-height: 90px;
+  resize: vertical;
+  margin-top: 8px;
+}
+
+.mf-coord-textarea:focus,
+.mf-coord-style-row select:focus,
+.mf-coord-row select:focus,
+.mf-coord-input-num:focus {
+  border-color: rgba(91, 142, 255, 0.8);
+  box-shadow: 0 0 0 2px rgba(91, 142, 255, 0.2);
+}
+
+.mf-coord-input-num {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(10, 17, 29, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  color: var(--mf-text-main, #edf5ff);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  outline: none;
+}
+
+/* ==========================================================================
+   Point Sets Manager
+   ========================================================================== */
+.mf-coord-set-manager {
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  padding: 10px;
+}
+
+.mf-coord-set-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mf-coord-set-list {
+  display: grid;
+  gap: 6px;
+}
+
+.mf-coord-set-item {
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.mf-coord-set-item.active {
+  border-color: rgba(127, 181, 255, 0.7);
+  background: rgba(127, 181, 255, 0.08);
+}
+
+.mf-coord-set-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mf-coord-set-name {
+  flex: 1;
+  min-width: 0;
+  background: rgba(10, 17, 29, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  color: var(--mf-text-main, #edf5ff);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.mf-coord-set-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.mf-coord-btn-sm {
+  padding: 5px 8px;
+  font-size: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--mf-text-main, #edf5ff);
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.mf-coord-btn-sm:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.mf-coord-btn-sm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Point Cards Controls
+   ========================================================================== */
+.mf-coord-point-controls {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.mf-coord-point-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.mf-coord-point-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #d9e8ff;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.mf-coord-mini-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.mf-coord-mini-row label {
+  flex: 1;
+  color: var(--mf-text-muted, #94a3b8);
+  font-size: 11px;
+}
+
+.mf-coord-mini-row input[type="range"] {
+  width: 120px;
+}
+
+.mf-coord-mini-row .val {
+  width: 45px;
+  text-align: right;
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+/* ==========================================================================
+   Canvas & View Styling in Workspace Mount Container
+   ========================================================================== */
+.mf-tool-mount-container.active canvas.mf-coord-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  background: #ffffff;
+  cursor: default;
+}
+
+.mf-tool-mount-container.active canvas.mf-coord-canvas.dragging {
+  cursor: grabbing;
+}
+
+.mf-tool-mount-container.active canvas.mf-coord-canvas.can-drag {
+  cursor: grab;
+}
+
+.mf-coord-hint {
+  font-size: 11px;
+  color: var(--mf-text-muted, #94a3b8);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.mf-coord-btn-group {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+/* ==========================================================================
+   Coordinate Input Card & Point Entry Rows (Phase 3B.3)
+   ========================================================================== */
+.mf-coord-card {
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.mf-coord-card-header {
+  margin-bottom: 8px;
+}
+
+.mf-coord-card-title {
+  color: #d9e8ff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.mf-coord-card-subtitle {
+  color: var(--mf-text-muted, #94a3b8);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.mf-coord-table-header {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr 28px;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mf-text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 6px;
+}
+
+.mf-coord-table-header .mf-col-x,
+.mf-coord-table-header .mf-col-y {
+  text-align: center;
+}
+
+.mf-coord-point-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+}
+
+.mf-coord-row-item {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr 28px;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.mf-coord-input-label {
+  box-sizing: border-box;
+  width: 100%;
+  background: rgba(10, 17, 29, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  color: var(--mf-text-main, #edf5ff);
+  border-radius: 6px;
+  padding: 5px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+}
+
+.mf-coord-input-coord {
+  box-sizing: border-box;
+  width: 100%;
+  background: rgba(10, 17, 29, 0.7);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  color: var(--mf-text-main, #edf5ff);
+  border-radius: 6px;
+  padding: 5px 6px;
+  font-size: 12px;
+  font-family: monospace, monospace;
+  text-align: right;
+  outline: none;
+}
+
+.mf-coord-input-label:focus,
+.mf-coord-input-coord:focus {
+  border-color: rgba(91, 142, 255, 0.8);
+  box-shadow: 0 0 0 2px rgba(91, 142, 255, 0.2);
+}
+
+.mf-coord-btn-del {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--mf-text-muted, #94a3b8);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.mf-coord-btn-del:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+.mf-coord-validation-msg {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.12);
+  border-left: 3px solid #ef4444;
+  font-size: 11px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.mf-coord-actions-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mf-coord-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.mf-btn-add {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #d9e8ff;
+}
+
+.mf-btn-add:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(127, 181, 255, 0.4);
+}
+
+.mf-btn-primary.mf-btn-plot {
+  background: #2563eb;
+  border: 1px solid #3b82f6;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+
+.mf-btn-primary.mf-btn-plot:hover {
+  background: #1d4ed8;
+  border-color: #60a5fa;
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.4);
+}

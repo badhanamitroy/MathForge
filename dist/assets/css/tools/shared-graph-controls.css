@@ -1,0 +1,230 @@
+.mf-workspace {
+  --mf-left-width: 270px;
+}
+
+.mf-tool-control-host {
+  margin-top: 12px;
+  color: #e8eaed;
+  font: 12px/1.45 var(--mf-font-ui);
+  user-select: text;
+}
+
+.mf-tool-control-host .card {
+  margin: 0 0 10px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #45484f;
+  border-radius: 7px;
+  background: #222327;
+  color: #e8eaed;
+  box-shadow: none;
+}
+
+.mf-tool-control-host .card h2 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border-bottom: 1px solid #414348;
+  color: #f1f3f4;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.mf-tool-control-host .body {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+}
+
+.mf-tool-control-host .sectionTitle,
+.mf-tool-control-host .section {
+  margin: 3px 0 0;
+  color: #9dc2ff;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.mf-tool-control-host label,
+.mf-tool-control-host .small {
+  display: block;
+  color: #c5c8ce;
+  font-size: 11px;
+}
+
+.mf-tool-control-host input:not([type="checkbox"]):not([type="range"]),
+.mf-tool-control-host select,
+.mf-tool-control-host textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 28px;
+  padding: 5px 7px;
+  border: 1px solid #50535a;
+  border-radius: 4px;
+  background: #191a1d;
+  color: #f1f3f4;
+  font: inherit;
+}
+
+.mf-tool-control-host textarea {
+  min-height: 78px;
+  resize: vertical;
+  white-space: pre;
+}
+
+.mf-tool-control-host input[type="range"] {
+  width: 100%;
+  min-width: 0;
+  accent-color: #6ea8fe;
+}
+
+.mf-tool-control-host input[type="checkbox"] {
+  accent-color: #6ea8fe;
+}
+
+.mf-tool-control-host .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 92px 38px;
+  align-items: center;
+  gap: 7px;
+}
+
+.mf-tool-control-host .two,
+.mf-tool-control-host .three {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mf-tool-control-host .three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mf-tool-control-host .row:has(input[type="range"]) {
+  grid-template-columns: minmax(80px, 1fr) minmax(60px, 1fr) 34px;
+}
+
+.mf-tool-control-host .row > label {
+  min-width: 0;
+}
+
+.mf-tool-control-host .row .val {
+  color: #9aa0a6;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.mf-tool-control-host .btns,
+.mf-tool-control-host .sheetBtns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mf-tool-control-host button {
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid #51545b;
+  border-radius: 4px;
+  background: #323438;
+  color: #f1f3f4;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mf-tool-control-host button:hover {
+  border-color: #6ea8fe;
+  background: #3a3d43;
+}
+
+.mf-tool-control-host button.good,
+.mf-tool-control-host button#draw,
+.mf-tool-control-host button#o_fitBtn,
+.mf-tool-control-host button#h_fitBtn {
+  border-color: #4a77b7;
+  background: #294b75;
+}
+
+.mf-tool-control-host .hint,
+.mf-tool-control-host .sheetHint {
+  color: #a7abb2;
+  font-size: 10px;
+}
+
+.mf-tool-control-host .pill {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 1px solid #45484f;
+  border-radius: 10px;
+  color: #9aa0a6;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.mf-tool-control-host .tableCard {
+  overflow: hidden;
+  border: 1px solid #45484f;
+  border-radius: 5px;
+}
+
+.mf-tool-control-host .sheetTitle {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px;
+  background: #2b2c30;
+  color: #e8eaed;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.mf-tool-control-host .sheetWrap {
+  overflow-x: auto;
+  padding: 6px;
+}
+
+.mf-tool-control-host .paperTable {
+  width: 100%;
+  border-collapse: collapse;
+  color: #e8eaed;
+  font-size: 9px;
+}
+
+.mf-tool-control-host .paperTable th,
+.mf-tool-control-host .paperTable td {
+  padding: 3px;
+  border: 1px solid #4a4d53;
+  text-align: center;
+}
+
+.mf-tool-control-host .paperTable input {
+  width: 100%;
+  min-width: 38px;
+  padding: 3px;
+  border: 0;
+  background: #191a1d;
+  color: #f1f3f4;
+  font: inherit;
+  text-align: center;
+}
+
+.mf-shared-graph-canvas {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: #fff;
+  touch-action: none;
+}
+
+@media (max-width: 1200px) {
+  .mf-workspace {
+    --mf-left-width: 220px;
+  }
+}
