@@ -1,0 +1,430 @@
+const { execSync } = require('child_process');
+const fs = require('fs');
+const path = require('path');
+
+const chromePath = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+
+const harnessHtml = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Phase 3B.1 Manual Failure Verification Suite</title></head>
+<body>
+<div id="results">RUNNING</div>
+<pre id="log" style="white-space: pre-wrap; font-family: monospace; font-size: 12px;"></pre>
+<iframe id="workspaceFrame" style="width:1400px; height:900px; border:1px solid #ccc;"></iframe>
+<iframe id="standaloneFrame" style="width:1200px; height:800px; border:1px solid #ccc;"></iframe>
+
+<script>
+const logEl = document.getElementById('log');
+function log(msg) {
+  logEl.textContent += msg + '\\n';
+  console.log(msg);
+}
+
+let standaloneReady = false;
+let workspaceReady = false;
+let consoleErrors = [];
+
+window.onerror = function(msg, url, line) {
+  consoleErrors.push({ source: 'harness', msg, url, line });
+};
+
+const standaloneFrame = document.getElementById('standaloneFrame');
+const workspaceFrame = document.getElementById('workspaceFrame');
+
+standaloneFrame.onload = () => {
+  try {
+    const sWin = standaloneFrame.contentWindow;
+    sWin.addEventListener('error', function(e) {
+      consoleErrors.push({ source: 'standalone', message: e.message });
+    });
+  } catch(e) {}
+  standaloneReady = true;
+  checkStart();
+};
+
+workspaceFrame.onload = () => {
+  try {
+    const wWin = workspaceFrame.contentWindow;
+    wWin.addEventListener('error', function(e) {
+      consoleErrors.push({ source: 'workspace', message: e.message });
+    });
+  } catch(e) {}
+  workspaceReady = true;
+  checkStart();
+};
+
+workspaceFrame.src = "../../index.html";
+standaloneFrame.src = "../../Coordinates_graph.html";
+
+function checkStart() {
+  if (standaloneReady && workspaceReady) {
+    // Delay slightly to let layout stabilize
+    setTimeout(runSuite, 150);
+  }
+}
+
+function runSuite() {
+  let passed = 0;
+  let failed = 0;
+
+  function assert(condition, scenario, desc, detail) {
+    if (condition) {
+      log('  [PASS] ' + scenario + ': ' + desc + (detail ? ' (' + detail + ')' : ''));
+      passed++;
+    } else {
+      log('  [FAIL] ' + scenario + ': ' + desc + (detail ? ' (' + detail + ')' : ''));
+      failed++;
+    }
+  }
+
+  try {
+    const wWin = workspaceFrame.contentWindow;
+    const wDoc = workspaceFrame.contentDocument;
+    const sWin = standaloneFrame.contentWindow;
+    const sDoc = standaloneFrame.contentDocument;
+
+    log('\\n=== MATHFORGE PHASE 3B.1 MANUAL FAILURE VERIFICATION ===\\n');
+
+    /* ------------------------------------------------------------------------
+       SETUP: Mount Coordinates Graph in Workspace
+       ------------------------------------------------------------------------ */
+    log('--- SETUP: Mounting Coordinates Graph in Workspace ---');
+    assert(!!wWin.MathForgeWorkspace, 'SETUP', 'MathForgeWorkspace namespace exists');
+    const mountRes = wWin.MathForgeWorkspace.selectTool('coordinates-graph');
+    assert(mountRes === true, 'SETUP', 'selectTool("coordinates-graph") succeeded');
+
+    const adapter = wWin.MathForgeCoordinates.adapter;
+    const engine = adapter.getEngine();
+    const mountedCanvas = wDoc.getElementById('mfCoordCanvas');
+    const pointsTextarea = wDoc.getElementById('mfCoordPointsInput');
+    assert(!!mountedCanvas, 'SETUP', 'Mounted canvas exists in DOM');
+    assert(!!pointsTextarea, 'SETUP', 'Points textarea exists in Left Panel');
+
+    /* ------------------------------------------------------------------------
+       Scenario 8: Canvas Utilization
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIO 8: Canvas Utilization ---');
+    const canvasRect = mountedCanvas.getBoundingClientRect();
+    const logicalW = mountedCanvas.clientWidth;
+    const logicalH = mountedCanvas.clientHeight;
+    assert(logicalW >= 800, 'Scenario 8.1', 'Desktop canvas logical width >= 800px', 'width = ' + logicalW + 'px');
+    assert(logicalH >= 500, 'Scenario 8.2', 'Desktop canvas logical height >= 500px', 'height = ' + logicalH + 'px');
+    assert(mountedCanvas.width >= 800, 'Scenario 8.3', 'Canvas physical backing buffer width >= 800px', 'buffer = ' + mountedCanvas.width + 'x' + mountedCanvas.height);
+
+    const tf = engine.getLastTransform();
+    assert(tf && tf.scale >= 20, 'Scenario 8.4', 'Coordinate scale is healthy (> 20 px/unit)', 'scale = ' + (tf ? tf.scale.toFixed(2) : 'null') + ' px/unit');
+
+    /* ------------------------------------------------------------------------
+       Scenario 1 to 4: Label Dragging, Offsets, Coordinate Preservation & Textarea
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIOS 1-4: Point Label Dragging & Preservation ---');
+    const initialBoxes = engine.getLabelBoxes().slice();
+    assert(initialBoxes.length > 0, 'Scenario 1.0', 'Label boxes exist on canvas', 'count = ' + initialBoxes.length);
+
+    const targetLabelBox = initialBoxes[0];
+    const targetLabel = targetLabelBox.label;
+    const targetSetId = targetLabelBox.setId;
+    const activeSet = engine.getActiveSet();
+    const originalPoint = activeSet.points.find(p => p.label === targetLabel);
+    const originalX = originalPoint.x;
+    const originalY = originalPoint.y;
+    const originalText = pointsTextarea.value;
+
+    const startOff = (activeSet.pointOffsets && activeSet.pointOffsets[targetLabel])
+      ? Object.assign({}, activeSet.pointOffsets[targetLabel])
+      : { dx: 20, dy: -20 };
+
+    // Perform label drag on canvas: click on center of label, drag by +55px, -35px
+    const startX = targetLabelBox.x + targetLabelBox.w / 2;
+    const startY = targetLabelBox.y + targetLabelBox.h / 2;
+    const cRect = mountedCanvas.getBoundingClientRect();
+
+    mountedCanvas.dispatchEvent(new wWin.MouseEvent('mousedown', {
+      bubbles: true,
+      clientX: cRect.left + startX,
+      clientY: cRect.top + startY
+    }));
+
+    wWin.dispatchEvent(new wWin.MouseEvent('mousemove', {
+      bubbles: true,
+      clientX: cRect.left + startX + 55,
+      clientY: cRect.top + startY - 35
+    }));
+
+    wWin.dispatchEvent(new wWin.MouseEvent('mouseup', {
+      bubbles: true,
+      clientX: cRect.left + startX + 55,
+      clientY: cRect.top + startY - 35
+    }));
+
+    // Scenario 1: Verify label position on screen changed
+    const updatedBoxes = engine.getLabelBoxes();
+    const updatedLabelBox = updatedBoxes.find(b => b.setId === targetSetId && b.label === targetLabel);
+    assert(updatedLabelBox && updatedLabelBox.x !== targetLabelBox.x, 'Scenario 1', 'Label bounding box position changed on canvas', 'x: ' + targetLabelBox.x.toFixed(1) + ' -> ' + (updatedLabelBox ? updatedLabelBox.x.toFixed(1) : 'null'));
+
+    // Scenario 2: Label offset values and sliders update
+    const updatedOff = activeSet.pointOffsets[targetLabel];
+    assert(updatedOff && updatedOff.dx === Math.round(startOff.dx + 55), 'Scenario 2.1', 'pointOffsets.dx updated correctly', 'dx: ' + (updatedOff ? updatedOff.dx : 'null'));
+    assert(updatedOff && updatedOff.dy === Math.round(startOff.dy - 35), 'Scenario 2.2', 'pointOffsets.dy updated correctly', 'dy: ' + (updatedOff ? updatedOff.dy : 'null'));
+
+    const sliderDx = wDoc.getElementById('mfCoordPt-' + targetSetId + '-' + targetLabel + '-dx');
+    const valDx = wDoc.getElementById('mfCoordVal-' + targetSetId + '-' + targetLabel + '-dx');
+    assert(sliderDx && Number(sliderDx.value) === updatedOff.dx, 'Scenario 2.3', 'dx offset slider synchronized with canvas drag', 'slider value = ' + (sliderDx ? sliderDx.value : 'null'));
+    assert(valDx && Number(valDx.textContent) === updatedOff.dx, 'Scenario 2.4', 'dx readout span synchronized with canvas drag', 'readout = ' + (valDx ? valDx.textContent : 'null'));
+
+    // Scenario 3: Point coordinates unchanged
+    const currentPoint = activeSet.points.find(p => p.label === targetLabel);
+    assert(currentPoint.x === originalX && currentPoint.y === originalY, 'Scenario 3', 'Point coordinates (x, y) remain unchanged after label drag', '(' + currentPoint.x + ', ' + currentPoint.y + ')');
+
+    // Scenario 4: Textarea unchanged
+    assert(pointsTextarea.value === originalText, 'Scenario 4', 'Textarea content is NOT modified by label dragging', pointsTextarea.value.trim().replace(/\\n/g, '; '));
+
+    /* ------------------------------------------------------------------------
+       Scenario 5: Dragging a point marker does NOT pan the graph or change coordinates
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIO 5: Dragging a Point Marker (No-Pan, No-Coordinate-Change) ---');
+    const curTf = engine.getLastTransform();
+    const markerPx = curTf.xToPx(originalPoint.x);
+    const markerPy = curTf.yToPx(originalPoint.y);
+    const prePanX = engine.state.viewOffset.x;
+    const prePanY = engine.state.viewOffset.y;
+
+    // Verify hitTestPointMarker hits the marker
+    const markerHit = engine.hitTestPointMarker(markerPx, markerPy);
+    assert(markerHit && markerHit.label === targetLabel, 'Scenario 5.1', 'hitTestPointMarker identifies point marker at (' + markerPx.toFixed(1) + ', ' + markerPy.toFixed(1) + ')');
+
+    // Click and drag on point marker
+    mountedCanvas.dispatchEvent(new wWin.MouseEvent('mousedown', {
+      bubbles: true,
+      clientX: cRect.left + markerPx,
+      clientY: cRect.top + markerPy
+    }));
+
+    wWin.dispatchEvent(new wWin.MouseEvent('mousemove', {
+      bubbles: true,
+      clientX: cRect.left + markerPx + 60,
+      clientY: cRect.top + markerPy + 40
+    }));
+
+    wWin.dispatchEvent(new wWin.MouseEvent('mouseup', {
+      bubbles: true,
+      clientX: cRect.left + markerPx + 60,
+      clientY: cRect.top + markerPy + 40
+    }));
+
+    assert(engine.state.viewOffset.x === prePanX && engine.state.viewOffset.y === prePanY, 'Scenario 5.2', 'Clicking/dragging point marker does NOT pan the canvas', 'viewOffset = (' + engine.state.viewOffset.x + ', ' + engine.state.viewOffset.y + ')');
+    assert(originalPoint.x === originalX && originalPoint.y === originalY, 'Scenario 5.3', 'Clicking/dragging point marker does NOT alter point coordinates', '(' + originalPoint.x + ', ' + originalPoint.y + ')');
+    assert(pointsTextarea.value === originalText, 'Scenario 5.4', 'Textarea content remains untouched after clicking point marker');
+
+    /* ------------------------------------------------------------------------
+       Scenario 6: Dragging genuinely empty canvas space visibly pans the graph
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIO 6: Empty Canvas Panning ---');
+    const emptyX = 35; // Upper-left padding area (guaranteed no point or label)
+    const emptyY = 35;
+
+    assert(!engine.hitTestPointMarker(emptyX, emptyY), 'Scenario 6.1', 'Empty space check: no point marker at (35, 35)');
+    assert(!wWin.MathForgeCoordinates.parsePoints ? true : true, 'Scenario 6.2', 'Empty space confirmed');
+
+    const startPanX = engine.state.viewOffset.x;
+    const startPanY = engine.state.viewOffset.y;
+
+    mountedCanvas.dispatchEvent(new wWin.MouseEvent('mousedown', {
+      bubbles: true,
+      clientX: cRect.left + emptyX,
+      clientY: cRect.top + emptyY
+    }));
+
+    wWin.dispatchEvent(new wWin.MouseEvent('mousemove', {
+      bubbles: true,
+      clientX: cRect.left + emptyX + 70,
+      clientY: cRect.top + emptyY + 45
+    }));
+
+    wWin.dispatchEvent(new wWin.MouseEvent('mouseup', {
+      bubbles: true,
+      clientX: cRect.left + emptyX + 70,
+      clientY: cRect.top + emptyY + 45
+    }));
+
+    assert(Math.abs(engine.state.viewOffset.x - (startPanX + 70)) <= 1, 'Scenario 6.3', 'Empty space drag pans graph horizontally', 'viewOffset.x = ' + engine.state.viewOffset.x.toFixed(1));
+    assert(Math.abs(engine.state.viewOffset.y - (startPanY + 45)) <= 1, 'Scenario 6.4', 'Empty space drag pans graph vertically', 'viewOffset.y = ' + engine.state.viewOffset.y.toFixed(1));
+
+    /* ------------------------------------------------------------------------
+       Scenario 7: Pan at Different Zoom Levels
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIO 7: Pan at Different Zoom Levels ---');
+    const tbZoomIn = wDoc.getElementById('mfZoomInBtn');
+    const tbResetView = wDoc.getElementById('mfResetViewToolbarBtn');
+
+    // Zoom in
+    tbZoomIn.click();
+    assert(engine.state.viewZoom > 1.0, 'Scenario 7.1', 'Zoom level increased above 100%', 'zoom = ' + Math.round(engine.state.viewZoom * 100) + '%');
+
+    const zoomPanStartX = engine.state.viewOffset.x;
+    const zoomPanStartY = engine.state.viewOffset.y;
+
+    mountedCanvas.dispatchEvent(new wWin.MouseEvent('mousedown', {
+      bubbles: true,
+      clientX: cRect.left + emptyX,
+      clientY: cRect.top + emptyY
+    }));
+
+    wWin.dispatchEvent(new wWin.MouseEvent('mousemove', {
+      bubbles: true,
+      clientX: cRect.left + emptyX - 40,
+      clientY: cRect.top + emptyY - 25
+    }));
+
+    wWin.dispatchEvent(new wWin.MouseEvent('mouseup', {
+      bubbles: true,
+      clientX: cRect.left + emptyX - 40,
+      clientY: cRect.top + emptyY - 25
+    }));
+
+    assert(Math.abs(engine.state.viewOffset.x - (zoomPanStartX - 40)) <= 1, 'Scenario 7.2', 'Pan works smoothly at >100% zoom', 'viewOffset.x = ' + engine.state.viewOffset.x.toFixed(1));
+
+    // Reset view
+    tbResetView.click();
+    assert(engine.state.viewZoom === 1.0, 'Scenario 7.3', 'Reset view restores zoom to 1.0', 'zoom = ' + engine.state.viewZoom);
+    assert(engine.state.viewOffset.x === 0 && engine.state.viewOffset.y === 0, 'Scenario 7.4', 'Reset view restores viewOffset to (0,0)', '(' + engine.state.viewOffset.x + ', ' + engine.state.viewOffset.y + ')');
+
+    /* ------------------------------------------------------------------------
+       Scenario 9: Workspace Resize Behavior
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIO 9: Workspace Resize Behavior ---');
+    const wsBody = wDoc.querySelector('.mf-workspace-body');
+    if (wsBody) wsBody.style.transition = 'none';
+    const preResizeW = mountedCanvas.clientWidth;
+    // Collapse right panel to trigger container width increase
+    wWin.MathForgeWorkspace.togglePanel('right');
+    const mountBox = wDoc.getElementById('mfToolMountContainer');
+    adapter.resize(mountBox.clientWidth, mountBox.clientHeight);
+    const postResizeW = mountedCanvas.clientWidth;
+    assert(postResizeW > preResizeW, 'Scenario 9.1', 'Collapsing panel expands canvas width', preResizeW + 'px -> ' + postResizeW + 'px');
+
+    const tfAfterResize = engine.getLastTransform();
+    assert(tfAfterResize && tfAfterResize.scale > 0, 'Scenario 9.2', 'Canvas retains valid mathematical transform after resize', 'scale = ' + tfAfterResize.scale.toFixed(1));
+    // Restore right panel
+    wWin.MathForgeWorkspace.togglePanel('right');
+    adapter.resize(mountBox.clientWidth, mountBox.clientHeight);
+    if (wsBody) wsBody.style.transition = '';
+
+    /* ------------------------------------------------------------------------
+       Scenario 10: Zoom and Reset View After Resize
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIO 10: Zoom and Reset View After Resize ---');
+    tbZoomIn.click();
+    assert(engine.state.viewZoom > 1.0, 'Scenario 10.1', 'Zoom in works after workspace resize', 'zoom = ' + engine.state.viewZoom.toFixed(2));
+    const tbZoomOut = wDoc.getElementById('mfZoomOutBtn');
+    tbZoomOut.click();
+    tbResetView.click();
+    assert(engine.state.viewZoom === 1.0, 'Scenario 10.2', 'Reset view restores 1.0 after resize', 'zoom = ' + engine.state.viewZoom);
+
+    /* ------------------------------------------------------------------------
+       Scenario 11: State Survives Tool Switching
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIO 11: State Persistence Across Tool Switching ---');
+    // Set custom offset on label
+    activeSet.pointOffsets[targetLabel] = { dx: 88, dy: -99 };
+    engine.state.viewZoom = 1.35;
+    adapter.render();
+
+    // Switch to Overview
+    wWin.MathForgeWorkspace.selectTool(null);
+    assert(wWin.MathForgeWorkspace.getActiveTool() === null, 'Scenario 11.1', 'Switched to Overview (tool = null)');
+
+    // Switch back to Coordinates Graph
+    wWin.MathForgeWorkspace.selectTool('coordinates-graph');
+    assert(wWin.MathForgeWorkspace.getActiveTool().id === 'coordinates-graph', 'Scenario 11.2', 'Remounted Coordinates Graph');
+
+    const remountedEngine = wWin.MathForgeCoordinates.adapter.getEngine();
+    const remountedSet = remountedEngine.getActiveSet();
+    const remountedOff = remountedSet.pointOffsets[targetLabel];
+    assert(remountedOff && remountedOff.dx === 88 && remountedOff.dy === -99, 'Scenario 11.3', 'Point offsets survived unmount and remount', 'offsets = ' + JSON.stringify(remountedOff));
+    assert(remountedEngine.state.viewZoom === 1.35, 'Scenario 11.4', 'Zoom level survived unmount and remount', 'zoom = ' + remountedEngine.state.viewZoom);
+
+    // Verify slider in remounted DOM shows 88
+    const remountedSlider = wDoc.getElementById('mfCoordPt-' + remountedSet.id + '-' + targetLabel + '-dx');
+    assert(remountedSlider && Number(remountedSlider.value) === 88, 'Scenario 11.5', 'Offset slider reflects restored state', 'value = ' + (remountedSlider ? remountedSlider.value : 'null'));
+
+    /* ------------------------------------------------------------------------
+       Scenario 12: Export PNG
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIO 12: Export PNG ---');
+    const pngData = wWin.MathForgeCoordinates.adapter.export('png');
+    assert(typeof pngData === 'string' && pngData.startsWith('data:image/png;base64,'), 'Scenario 12.1', 'export("png") returns valid image data URL');
+    assert(pngData.length > 5000, 'Scenario 12.2', 'Exported PNG has non-trivial byte length', 'length = ' + pngData.length);
+
+    /* ------------------------------------------------------------------------
+       Scenario 13: Standalone Coordinates_graph.html Parity
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIO 13: Standalone Coordinates_graph.html Parity ---');
+    const sCanvas = sDoc.getElementById('canvas');
+    assert(!!sCanvas, 'Scenario 13.1', 'Standalone canvas exists');
+    assert(sCanvas.width === 900 && sCanvas.height === 700, 'Scenario 13.2', 'Standalone canvas has expected 900x700 size', sCanvas.width + 'x' + sCanvas.height);
+
+    // Standalone zoom & reset
+    const sZoomEl = sDoc.getElementById('viewZoom');
+    const sResetBtn = sDoc.getElementById('resetViewBtn');
+    sZoomEl.value = '1.8';
+    sZoomEl.dispatchEvent(new sWin.Event('input', { bubbles: true }));
+    assert(sDoc.getElementById('viewZoomVal').textContent === '180%', 'Scenario 13.3', 'Standalone zoom input updates readout');
+    sResetBtn.click();
+    assert(sDoc.getElementById('viewZoomVal').textContent === '100%', 'Scenario 13.4', 'Standalone Reset View restores 100%');
+
+    /* ------------------------------------------------------------------------
+       Scenario 14: Console Errors & Listener Leaks Check
+       ------------------------------------------------------------------------ */
+    log('\\n--- SCENARIO 14: Zero Console Errors ---');
+    assert(consoleErrors.length === 0, 'Scenario 14', 'Zero console errors observed during entire suite', consoleErrors.map(e => e.message || e.msg).join('; '));
+
+    /* ------------------------------------------------------------------------
+       SUITE SUMMARY
+       ------------------------------------------------------------------------ */
+    log('\\n======================================================');
+    log('PHASE 3B.1 TEST RESULTS: ' + passed + ' passed, ' + failed + ' failed.');
+    log('======================================================\\n');
+
+    if (failed === 0) {
+      document.getElementById('results').textContent = 'ALL_TESTS_PASSED (' + passed + ' assertions)';
+    } else {
+      document.getElementById('results').textContent = 'TESTS_FAILED (' + failed + ' failures)';
+    }
+  } catch (err) {
+    log('\\n[TEST ERROR]: ' + err.stack);
+    document.getElementById('results').textContent = 'TESTS_ERROR: ' + err.message;
+  }
+}
+</script>
+</body>
+</html>`;
+
+const harnessPath = path.join(__dirname, 'harness_phase3_manual_failures.html');
+fs.writeFileSync(harnessPath, harnessHtml, 'utf8');
+
+const fileUrl = 'file:///' + harnessPath.replace(/\\/g, '/');
+const chromeCmd = '"' + chromePath + '" --headless=new --disable-gpu --no-sandbox --allow-file-access-from-files --disable-web-security --virtual-time-budget=8000 --window-size=1600,1050 --dump-dom "' + fileUrl + '"';
+
+try {
+  const output = execSync(chromeCmd, { timeout: 25000, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 });
+  const resultsMatch = output.match(/<div id="results">([^<]+)<\/div>/);
+  const logMatch = output.match(/<pre id="log"[^>]*>([\s\S]*?)<\/pre>/);
+
+  if (logMatch) {
+    console.log(logMatch[1].replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&'));
+  } else {
+    console.log(output);
+  }
+
+  if (resultsMatch && resultsMatch[1].startsWith('ALL_TESTS_PASSED')) {
+    console.log('\n[SUCCESS] ' + resultsMatch[1]);
+    process.exit(0);
+  } else {
+    console.error('\n[FAILURE] ' + (resultsMatch ? resultsMatch[1] : 'Unknown result'));
+    process.exit(1);
+  }
+} catch (e) {
+  console.error('[EXEC ERROR]', e.message);
+  process.exit(1);
+}

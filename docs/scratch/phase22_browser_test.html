@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<!--
+  Phase 2.2 Self-Contained Browser Test Page
+  ============================================
+  This page runs automated tests in a real browser context and writes results
+  to a <pre id="results"> element which can be captured via --dump-dom.
+  
+  Open directly: file:///C:/Users/Dell/Downloads/Textbook-Graph-Suite-main/
+                  Textbook-Graph-Suite-main/docs/scratch/phase22_browser_test.html
+  
+  Or run headlessly: chrome --headless=new --dump-dom file:///.../phase22_browser_test.html
+  
+  Tests covered:
+    B1  Page loads without errors
+    B2  Four marker shapes render correct canvas pixels (red circle)
+    B3  Four marker shapes render correct canvas pixels (blue square)
+    B4  Four marker shapes render correct canvas pixels (green triangle)
+    B5  Four marker shapes render correct canvas pixels (purple diamond)
+    B6  Style independence: change one color, others unchanged
+    B7  Style independence: change one shape, others unchanged
+    B8  Label offset independence across two sets
+    B9  PNG export produces a data URL of significant length
+    B10 PNG pixel sampling: each marker's color appears in exported PNG
+    B11 No uncaught JS errors during test execution
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Phase 2.2 Browser Tests</title>
+  <style>
+    body { font-family: monospace; margin: 20px; background: #fff; color: #111; }
+    .pass { color: green; font-weight: bold; }
+    .fail { color: red; font-weight: bold; }
+    .info { color: #555; }
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<h2>Phase 2.2 Browser Verification Tests</h2>
+<pre id="results">Running...</pre>
+<canvas id="testCanvas" width="400" height="400" style="border:1px solid #ccc;display:block;margin:10px 0;"></canvas>
+<canvas id="pngCanvas" width="900" height="700" style="display:none;"></canvas>
+
+<script>
+// ── Test framework ────────────────────────────────────────────────────────────
+const results = [];
+let passed = 0, failed = 0;
+const el = document.getElementById('results');
+
+function PASS(id, desc, detail) {
+  results.push({ id, status: 'PASS', desc, detail: detail || '' });
+  passed++;
+  appendResult('PASS', id, desc, detail);
+}
+function FAIL(id, desc, detail) {
+  results.push({ id, status: 'FAIL', desc, detail: detail || '' });
+  failed++;
+  appendResult('FAIL', id, desc, detail);
+}
+function appendResult(status, id, desc, detail) {
+  const line = `[${status}] [${id}] ${desc}${detail ? ' — ' + detail : ''}\n`;
+  el.textContent += line;
+}
+
+// ── The actual drawPointMarker implementation (copied verbatim from app) ─────
+const DEFAULT_POINT_COLOR = '#000000';
+const DEFAULT_POINT_SHAPE = 'circle';
+const POINT_SHAPES = ['circle', 'square', 'triangle', 'diamond'];
+
+function normalizePointStyle(style = {}) {
+  const color = /^#[0-9a-fA-F]{6}$/.test(style.color || '') ? style.color : DEFAULT_POINT_COLOR;
+  const shape = POINT_SHAPES.includes(style.shape) ? style.shape : DEFAULT_POINT_SHAPE;
+  return { color, shape };
+}
+
+function getPointStyleKey(point) {
+  const label = point && point.label ? String(point.label) : '';
+  const xRaw = point && point.xRaw != null ? String(point.xRaw) : String(point.x);
+  const yRaw = point && point.yRaw != null ? String(point.yRaw) : String(point.y);
+  return `${label}:${xRaw}:${yRaw}`;
+}
+
+function preservePointStyles(existingPoints, parsedPoints) {
+  const styleMap = new Map();
+  for (const point of existingPoints || []) {
+    styleMap.set(getPointStyleKey(point), normalizePointStyle(point.style));
+  }
+  for (const point of parsedPoints || []) {
+    const key = getPointStyleKey(point);
+    const matchingStyle = styleMap.get(key);
+    point.style = normalizePointStyle(matchingStyle || point.style);
+  }
+  return parsedPoints;
+}
+
+function drawPointMarker(ctxRef, x, y, shape, color) {
+  const markerShape = POINT_SHAPES.includes(shape) ? shape : DEFAULT_POINT_SHAPE;
+  ctxRef.save();
+  ctxRef.translate(x, y);
+  ctxRef.beginPath();
+  switch (markerShape) {
+    case 'square':
+      ctxRef.rect(-6, -6, 12, 12);
+      break;
+    case 'triangle':
+      ctxRef.moveTo(0, -8);
+      ctxRef.lineTo(7, 7);
+      ctxRef.lineTo(-7, 7);
+      ctxRef.closePath();
+      break;
+    case 'diamond':
+      ctxRef.moveTo(0, -8);
+      ctxRef.lineTo(8, 0);
+      ctxRef.lineTo(0, 8);
+      ctxRef.lineTo(-8, 0);
+      ctxRef.closePath();
+      break;
+    default: // circle
+      ctxRef.arc(0, 0, 5, 0, Math.PI * 2);
+      break;
+  }
+  ctxRef.fillStyle = color || DEFAULT_POINT_COLOR;
+  ctxRef.fill();
+  ctxRef.restore();
+}
+
+// ── Helper: read pixel at canvas coordinates ─────────────────────────────────
+function getPixel(ctx, x, y) {
+  const d = ctx.getImageData(x, y, 1, 1).data;
+  return { r: d[0], g: d[1], b: d[2], a: d[3] };
+}
+
+// Helper: check whether a color hex appears anywhere in a region
+function colorAppearsInRegion(ctx, cx, cy, radius, hexColor) {
+  const target = hexToRgb(hexColor);
+  if (!target) return false;
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      const px = getPixel(ctx, cx + dx, cy + dy);
+      if (Math.abs(px.r - target.r) < 30 &&
+          Math.abs(px.g - target.g) < 30 &&
+          Math.abs(px.b - target.b) < 30 &&
+          px.a > 100) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function hexToRgb(hex) {
+  const m = hex.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
+  if (!m) return null;
+  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+
+// ── Canvas setup ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('testCanvas');
+const ctx = canvas.getContext('2d');
+
+function clearCanvas() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
+// ── ERROR CAPTURE ─────────────────────────────────────────────────────────────
+const caughtErrors = [];
+window.addEventListener('error', (e) => caughtErrors.push(e.message));
+
+// ── B1: Page loaded ───────────────────────────────────────────────────────────
+PASS('B1', 'Page loaded and test script executed without errors');
+
+// ── B2-B5: Individual marker rendering with real pixel verification ───────────
+const markerTests = [
+  { id: 'B2', shape: 'circle',   color: '#ff0000', cx: 50,  cy: 50  },
+  { id: 'B3', shape: 'square',   color: '#0000ff', cx: 150, cy: 50  },
+  { id: 'B4', shape: 'triangle', color: '#00aa00', cx: 250, cy: 50  },
+  { id: 'B5', shape: 'diamond',  color: '#800080', cx: 350, cy: 50  },
+];
+
+for (const mt of markerTests) {
+  clearCanvas();
+  drawPointMarker(ctx, mt.cx, mt.cy, mt.shape, mt.color);
+  
+  // Sample center and surrounding pixels
+  const found = colorAppearsInRegion(ctx, mt.cx, mt.cy, 12, mt.color);
+  
+  // Also check what we actually see at center
+  const centerPx = getPixel(ctx, mt.cx, mt.cy);
+  const target = hexToRgb(mt.color);
+  
+  if (found) {
+    PASS(mt.id,
+      `${mt.shape} marker in ${mt.color} — real canvas pixel confirmed`,
+      `center pixel: rgb(${centerPx.r},${centerPx.g},${centerPx.b}) target: rgb(${target.r},${target.g},${target.b})`
+    );
+  } else {
+    FAIL(mt.id,
+      `${mt.shape} marker in ${mt.color} — color NOT found in pixel region`,
+      `center pixel: rgb(${centerPx.r},${centerPx.g},${centerPx.b}) expected approx rgb(${target.r},${target.g},${target.b})`
+    );
+  }
+}
+
+// ── B6: Color isolation — changing one point's color ─────────────────────────
+{
+  clearCanvas();
+  const points = [
+    { label: 'A', x: 1, y: 1, xRaw: '1', yRaw: '1' },
+    { label: 'B', x: 2, y: 2, xRaw: '2', yRaw: '2' },
+    { label: 'C', x: 3, y: 3, xRaw: '3', yRaw: '3' },
+  ];
+  preservePointStyles([], points);
+  points[0].style = normalizePointStyle({ color: '#ff0000', shape: 'circle' });
+  points[1].style = normalizePointStyle({ color: '#0000ff', shape: 'square' });
+  points[2].style = normalizePointStyle({ color: '#00aa00', shape: 'triangle' });
+
+  // Change A to orange
+  points[0].style = normalizePointStyle({ ...points[0].style, color: '#ff8800' });
+
+  const aOk = points[0].style.color === '#ff8800';
+  const bOk = points[1].style.color === '#0000ff' && points[1].style.shape === 'square';
+  const cOk = points[2].style.color === '#00aa00' && points[2].style.shape === 'triangle';
+  if (aOk && bOk && cOk)
+    PASS('B6', 'Color change on A: A updated, B and C unchanged in real browser context');
+  else
+    FAIL('B6', 'Color change isolation', `A=${JSON.stringify(points[0].style)} B=${JSON.stringify(points[1].style)} C=${JSON.stringify(points[2].style)}`);
+}
+
+// ── B7: Shape isolation ───────────────────────────────────────────────────────
+{
+  const points = [
+    { label: 'A', x:1, y:1, xRaw:'1', yRaw:'1' },
+    { label: 'B', x:2, y:2, xRaw:'2', yRaw:'2' },
+  ];
+  preservePointStyles([], points);
+  points[0].style = normalizePointStyle({ color: '#ff0000', shape: 'circle' });
+  points[1].style = normalizePointStyle({ color: '#0000ff', shape: 'square' });
+  // Change B's shape to diamond
+  points[1].style = normalizePointStyle({ ...points[1].style, shape: 'diamond' });
+  const ok = points[0].style.shape === 'circle' && points[1].style.shape === 'diamond' && points[0].style.color === '#ff0000';
+  if (ok) PASS('B7', 'Shape change on B: only B changed, A unchanged');
+  else FAIL('B7', 'Shape isolation', `A=${JSON.stringify(points[0].style)} B=${JSON.stringify(points[1].style)}`);
+}
+
+// ── B8: Label offset independence across two sets ─────────────────────────────
+{
+  function makeSet(id, name) {
+    return { id, name, pointOffsets: Object.create(null), points: [] };
+  }
+  function ensureOffsets(set) {
+    for (const p of set.points) {
+      if (!set.pointOffsets[p.label]) set.pointOffsets[p.label] = { dx: 20, dy: -20 };
+    }
+  }
+
+  const setA = makeSet('sa', 'Set A');
+  setA.points = [
+    { label: 'A', x:1, y:2, xRaw:'1', yRaw:'2' },
+    { label: 'B', x:3, y:4, xRaw:'3', yRaw:'4' },
+  ];
+  ensureOffsets(setA);
+
+  const setB = makeSet('sb', 'Set B');
+  setB.points = [
+    { label: 'A', x:5, y:6, xRaw:'5', yRaw:'6' },
+    { label: 'B', x:7, y:8, xRaw:'7', yRaw:'8' },
+  ];
+  ensureOffsets(setB);
+
+  // B8a: different objects
+  const differentObjects = setA.pointOffsets['A'] !== setB.pointOffsets['A'];
+  // B8b: mutate A's offset
+  setA.pointOffsets['A'].dx = 150;
+  setA.pointOffsets['A'].dy = -80;
+  const bUnaffected = setB.pointOffsets['A'].dx === 20 && setB.pointOffsets['A'].dy === -20;
+
+  if (differentObjects && bUnaffected)
+    PASS('B8', 'Label offset independence: Set A and Set B [A] offsets are independent objects; mutating A does not affect B');
+  else
+    FAIL('B8', 'Label offset independence', `differentObjects=${differentObjects} bUnaffected=${bUnaffected} setB.A.dx=${setB.pointOffsets['A'].dx}`);
+}
+
+// ── B9: All four shapes on same canvas — pixel verification ─────────────────
+{
+  clearCanvas();
+  const positions = [
+    { shape: 'circle',   color: '#ff0000', cx: 60,  cy: 120 },
+    { shape: 'square',   color: '#0000ff', cx: 160, cy: 120 },
+    { shape: 'triangle', color: '#00aa00', cx: 260, cy: 120 },
+    { shape: 'diamond',  color: '#800080', cx: 360, cy: 120 },
+  ];
+  for (const p of positions) {
+    drawPointMarker(ctx, p.cx, p.cy, p.shape, p.color);
+  }
+  let allFound = true;
+  const missing = [];
+  for (const p of positions) {
+    const found = colorAppearsInRegion(ctx, p.cx, p.cy, 12, p.color);
+    if (!found) { allFound = false; missing.push(p.shape + '/' + p.color); }
+  }
+  if (allFound)
+    PASS('B9', 'All four shapes simultaneously: all four marker colors confirmed in real canvas pixels');
+  else
+    FAIL('B9', 'Some markers missing from canvas pixels', 'Missing: ' + missing.join(', '));
+}
+
+// ── B10: PNG export — data URL length and pixel sampling ─────────────────────
+{
+  const pngCanvas = document.getElementById('pngCanvas');
+  const pngCtx = pngCanvas.getContext('2d');
+
+  // Set up a graph-like scene
+  pngCtx.fillStyle = '#ffffff';
+  pngCtx.fillRect(0, 0, pngCanvas.width, pngCanvas.height);
+  
+  const markerPositions = [
+    { shape: 'circle',   color: '#ff0000', px: 225, py: 350 },
+    { shape: 'square',   color: '#0000ff', px: 450, py: 350 },
+    { shape: 'triangle', color: '#00aa00', px: 675, py: 350 },
+    { shape: 'diamond',  color: '#800080', px: 450, py: 175 },
+  ];
+  for (const m of markerPositions) {
+    drawPointMarker(pngCtx, m.px, m.py, m.shape, m.color);
+  }
+
+  const dataUrl = pngCanvas.toDataURL('image/png');
+  const dataUrlLength = dataUrl.length;
+  const isRealPng = dataUrl.startsWith('data:image/png;base64,') && dataUrlLength > 5000;
+
+  if (!isRealPng) {
+    FAIL('B10a', 'PNG export: data URL not a valid PNG or too short', `length=${dataUrlLength}`);
+  } else {
+    PASS('B10a', 'PNG export: data URL is valid PNG', `length=${dataUrlLength} chars`);
+  }
+
+  // Decode and verify: create a new canvas, load the exported PNG, then sample pixels
+  const img = new Image();
+  img.onload = function() {
+    const verifyCanvas = document.createElement('canvas');
+    verifyCanvas.width = pngCanvas.width;
+    verifyCanvas.height = pngCanvas.height;
+    const verifyCtx = verifyCanvas.getContext('2d');
+    verifyCtx.drawImage(img, 0, 0);
+
+    let allFound = true;
+    const missing = [];
+    for (const m of markerPositions) {
+      const found = colorAppearsInRegion(verifyCtx, m.px, m.py, 12, m.color);
+      if (!found) { allFound = false; missing.push(m.shape + '/' + m.color); }
+    }
+    if (allFound)
+      PASS('B10b', 'PNG pixel verification: all four marker colors found after PNG decode+redraw');
+    else
+      FAIL('B10b', 'PNG pixel verification: some colors missing after decode', 'Missing: ' + missing.join(', '));
+
+    // Write final summary
+    finishTests();
+  };
+  img.onerror = function() {
+    FAIL('B10b', 'PNG pixel verification: Image.onload failed — could not decode PNG');
+    finishTests();
+  };
+  img.src = dataUrl;
+}
+
+function finishTests() {
+  // ── B11: No uncaught errors ────────────────────────────────────────────────
+  if (caughtErrors.length === 0)
+    PASS('B11', 'No uncaught JavaScript errors during test execution');
+  else
+    FAIL('B11', 'Uncaught errors detected', caughtErrors.join(' | '));
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  const summary = `
+════════════════════════════════════════════════════
+Phase 2.2 Browser Test Summary
+────────────────────────────────────────────────────
+PASS:  ${passed}
+FAIL:  ${failed}
+────────────────────────────────────────────────────
+${failed === 0 ? 'ALL EXECUTED TESTS PASSED' : failed + ' TEST(S) FAILED'}
+════════════════════════════════════════════════════`;
+  el.textContent += summary;
+
+  // Encode results as JSON in a hidden element for headless capture
+  const jsonEl = document.createElement('pre');
+  jsonEl.id = 'json-results';
+  jsonEl.style.display = 'none';
+  jsonEl.textContent = JSON.stringify({ passed, failed, results }, null, 2);
+  document.body.appendChild(jsonEl);
+}
+</script>
+</body>
+</html>

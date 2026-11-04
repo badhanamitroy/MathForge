@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Phase 2.3 Regression Tests</title>
+</head>
+<body>
+<iframe id="appFrame" src="../../Coordinates_graph.html"></iframe>
+<pre id="output">Running regression tests...</pre>
+
+<script>
+const output = document.getElementById('output');
+const frame = document.getElementById('appFrame');
+
+const results = [];
+let passed = 0, failed = 0;
+
+function log(status, id, desc, detail) {
+  const line = `[${status}] [${id}] ${desc}${detail ? ' — ' + detail : ''}\n`;
+  output.textContent += line;
+  results.push({ id, status, desc, detail: detail || '' });
+  if (status === 'PASS') passed++;
+  else if (status === 'FAIL') failed++;
+}
+const PASS = (id, desc, d) => log('PASS', id, desc, d);
+const FAIL = (id, desc, d) => log('FAIL', id, desc, d);
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+frame.onload = async () => {
+  try {
+    const doc = frame.contentDocument || frame.contentWindow.document;
+    const canvas = doc.getElementById('canvas');
+    const pointsInput = doc.getElementById('pointsInput');
+    const drawBtn = doc.getElementById('drawBtn');
+    const resetBtn = doc.getElementById('resetBtn');
+    const addSetBtn = doc.getElementById('addSetBtn');
+    const pointControls = doc.getElementById('pointControls');
+
+    // REG-1: Direct file:// loading
+    PASS('REG-1', 'Direct file:// load successful, canvas initialized', `Canvas size: ${canvas.width}x${canvas.height}`);
+
+    // REG-2: Legacy single-set point input without labels (e.g. "1,2\n3,4\n5,6")
+    pointsInput.value = '1,2\n3,4\n5,6';
+    pointsInput.dispatchEvent(new Event('input', { bubbles: true }));
+    drawBtn.click();
+    await delay(60);
+
+    const pointCards = pointControls.querySelectorAll('.pointCard');
+    const legacyOk = pointCards.length === 3 &&
+                     pointCards[0].textContent.includes('A') &&
+                     pointCards[1].textContent.includes('B') &&
+                     pointCards[2].textContent.includes('C');
+    if (legacyOk) {
+      PASS('REG-2', 'Legacy point input (1,2) auto-assigns A, B, C labels and creates point controls');
+    } else {
+      FAIL('REG-2', 'Legacy point input failed', `Cards count: ${pointCards.length}`);
+    }
+
+    // REG-3: Fraction coordinates parsing
+    pointsInput.value = 'P(1/3, -2/5)\nQ(7/2, 10/9)';
+    pointsInput.dispatchEvent(new Event('input', { bubbles: true }));
+    drawBtn.click();
+    await delay(60);
+
+    const fractionCards = pointControls.querySelectorAll('.pointCard');
+    const fractionOk = fractionCards.length === 2 &&
+                       fractionCards[0].textContent.includes('1/3') &&
+                       fractionCards[1].textContent.includes('10/9');
+    if (fractionOk) {
+      PASS('REG-3', 'Fraction coordinates correctly parsed and preserved in UI labels');
+    } else {
+      FAIL('REG-3', 'Fraction coordinates failed');
+    }
+
+    // REG-4: Phase 2.2 Independent point styling (color & shape)
+    // In Set 1, assign P: square, red (#ff0000); Q: diamond, blue (#0000ff)
+    const p1Card = fractionCards[0];
+    const p2Card = fractionCards[1];
+    const p1Color = p1Card.querySelector('input[type="color"]');
+    const p1Shape = p1Card.querySelector('select');
+    const p2Color = p2Card.querySelector('input[type="color"]');
+    const p2Shape = p2Card.querySelector('select');
+
+    p1Color.value = '#ff0000';
+    p1Color.dispatchEvent(new Event('input', { bubbles: true }));
+    p1Shape.value = 'square';
+    p1Shape.dispatchEvent(new Event('change', { bubbles: true }));
+
+    p2Color.value = '#0000ff';
+    p2Color.dispatchEvent(new Event('input', { bubbles: true }));
+    p2Shape.value = 'diamond';
+    p2Shape.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(60);
+
+    const pointStyleOk = p1Color.value === '#ff0000' && p1Shape.value === 'square' &&
+                         p2Color.value === '#0000ff' && p2Shape.value === 'diamond';
+    if (pointStyleOk) {
+      PASS('REG-4', 'Per-point marker shape (square/diamond) and colors independently configurable');
+    } else {
+      FAIL('REG-4', 'Point styling failed');
+    }
+
+    // REG-5: Same-label isolation across multiple point sets
+    addSetBtn.click();
+    await delay(80);
+
+    // In Set 2, enter points with same labels P and Q but different styles
+    pointsInput.value = 'P(2,2)\nQ(5,5)';
+    pointsInput.dispatchEvent(new Event('input', { bubbles: true }));
+    drawBtn.click();
+    await delay(60);
+
+    const set2Cards = pointControls.querySelectorAll('.pointCard');
+    const set2P1Color = set2Cards[0].querySelector('input[type="color"]');
+    const set2P1Shape = set2Cards[0].querySelector('select');
+    set2P1Color.value = '#00ff00'; // Green triangle in Set 2
+    set2P1Color.dispatchEvent(new Event('input', { bubbles: true }));
+    set2P1Shape.value = 'triangle';
+    set2P1Shape.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(60);
+
+    // Switch back to Set 1
+    const setListEl = doc.getElementById('setList');
+    const set1SelectBtn = setListEl.children[0].querySelector('.setItemActions button');
+    set1SelectBtn.click();
+    await delay(80);
+
+    // Check Set 1 P is still red square
+    const set1RestoredCards = pointControls.querySelectorAll('.pointCard');
+    const set1PColor = set1RestoredCards[0].querySelector('input[type="color"]').value;
+    const set1PShape = set1RestoredCards[0].querySelector('select').value;
+
+    if (set1PColor === '#ff0000' && set1PShape === 'square') {
+      PASS('REG-5', 'Same-label points (P, Q) across sets maintain completely isolated styles');
+    } else {
+      FAIL('REG-5', 'Same-label isolation failed', `Set 1 P color=${set1PColor}, shape=${set1PShape}`);
+    }
+
+    // REG-6: Reset sample button restores initial state
+    resetBtn.click();
+    await delay(80);
+
+    const resetInput = pointsInput.value;
+    const resetCards = pointControls.querySelectorAll('.pointCard');
+    const resetOk = resetInput.includes('P(1,-1)') && resetCards.length === 3;
+    if (resetOk) {
+      PASS('REG-6', 'Reset sample button restores default dataset and resets point controls cleanly');
+    } else {
+      FAIL('REG-6', 'Reset button failed', `Cards: ${resetCards.length}`);
+    }
+
+    finishReg();
+  } catch(e) {
+    FAIL('REG-ERR', 'Regression test exception', e.message);
+    finishReg();
+  }
+};
+
+function finishReg() {
+  const summary = `\n============================================\nREGRESSION TESTS COMPLETE\nPASS: ${passed} | FAIL: ${failed}\n============================================\n`;
+  output.textContent += summary;
+
+  const jsonPre = document.createElement('pre');
+  jsonPre.id = 'json-results';
+  jsonPre.style.display = 'none';
+  jsonPre.textContent = JSON.stringify({ passed, failed, results }, null, 2);
+  document.body.appendChild(jsonPre);
+}
+</script>
+</body>
+</html>

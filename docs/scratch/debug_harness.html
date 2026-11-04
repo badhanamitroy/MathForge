@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<body>
+<iframe id="f" src="../../index.html" style="width:1400px; height:900px;"></iframe>
+<pre id="res"></pre>
+<script>
+window.onload = () => {
+  setTimeout(() => {
+    const f = document.getElementById('f');
+    const win = f.contentWindow;
+    const doc = f.contentDocument;
+
+    win.MathForgeWorkspace.selectTool('coordinates-graph');
+
+    const canvas = doc.querySelector('.mf-coord-canvas');
+    const container = doc.getElementById('mfToolMountContainer');
+    const sheet = doc.getElementById('mfCanvasSheet');
+    const stage = doc.getElementById('mfCanvasStage');
+
+    const data = {
+      canvas_width: canvas ? canvas.width : null,
+      canvas_height: canvas ? canvas.height : null,
+      canvas_style_w: canvas ? canvas.style.width : null,
+      canvas_style_h: canvas ? canvas.style.height : null,
+      canvas_rect: canvas ? canvas.getBoundingClientRect() : null,
+      container_rect: container ? container.getBoundingClientRect() : null,
+      sheet_rect: sheet ? sheet.getBoundingClientRect() : null,
+      stage_rect: stage ? stage.getBoundingClientRect() : null,
+      dpr: win.devicePixelRatio,
+      labelBoxes: win.MathForgeCoordinates.adapter.getState ? win.MathForgeCoordinates.createEngine : null
+    };
+
+    document.getElementById('res').textContent = JSON.stringify(data, null, 2);
+  }, 300);
+};
+</script>
+</body>
+</html>

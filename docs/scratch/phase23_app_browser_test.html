@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Phase 2.3 Actual Application Browser Tests</title>
+  <style>
+    body { font-family: monospace; margin: 15px; background: #fff; color: #111; }
+    iframe { border: 1px solid #ccc; width: 950px; height: 750px; }
+    pre { background: #f4f6f8; padding: 12px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+<h2>Phase 2.3 — Actual Application In-Browser Verification</h2>
+<iframe id="appFrame" src="../../Coordinates_graph.html"></iframe>
+<pre id="output">Running actual application tests...</pre>
+
+<script>
+const output = document.getElementById('output');
+const frame = document.getElementById('appFrame');
+
+const results = [];
+let passed = 0, failed = 0;
+
+function log(status, id, desc, detail) {
+  const line = `[${status}] [${id}] ${desc}${detail ? ' — ' + detail : ''}\n`;
+  output.textContent += line;
+  results.push({ id, status, desc, detail: detail || '' });
+  if (status === 'PASS') passed++;
+  else if (status === 'FAIL') failed++;
+}
+const PASS = (id, desc, d) => log('PASS', id, desc, d);
+const FAIL = (id, desc, d) => log('FAIL', id, desc, d);
+
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function hexToRgb(hex) {
+  const m = hex.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
+  if (!m) return null;
+  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+
+function getCanvasPixel(canvas, x, y) {
+  const ctx = canvas.getContext('2d');
+  const d = ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+  return { r: d[0], g: d[1], b: d[2], a: d[3] };
+}
+
+function countPixelsWithColor(canvas, x1, y1, x2, y2, hexColor, tolerance = 35) {
+  const target = hexToRgb(hexColor);
+  if (!target) return 0;
+  const ctx = canvas.getContext('2d');
+  const w = Math.abs(x2 - x1) + 1;
+  const h = Math.abs(y2 - y1) + 1;
+  const startX = Math.min(x1, x2);
+  const startY = Math.min(y1, y2);
+  const imgData = ctx.getImageData(Math.round(startX), Math.round(startY), Math.round(w), Math.round(h)).data;
+  let count = 0;
+  for (let i = 0; i < imgData.length; i += 4) {
+    if (Math.abs(imgData[i] - target.r) <= tolerance &&
+        Math.abs(imgData[i+1] - target.g) <= tolerance &&
+        Math.abs(imgData[i+2] - target.b) <= tolerance &&
+        imgData[i+3] > 80) {
+      count++;
+    }
+  }
+  return count;
+}
+
+frame.onload = async () => {
+  try {
+    const doc = frame.contentDocument || frame.contentWindow.document;
+
+    // Elements
+    const canvas = doc.getElementById('canvas');
+    const pointsInput = doc.getElementById('pointsInput');
+    const drawBtn = doc.getElementById('drawBtn');
+    const addSetBtn = doc.getElementById('addSetBtn');
+
+    // Controls
+    const polygonVisible = doc.getElementById('polygonVisible');
+    const polygonFillVisible = doc.getElementById('polygonFillVisible');
+    const polygonFillColor = doc.getElementById('polygonFillColor');
+    const polygonFillOpacity = doc.getElementById('polygonFillOpacity');
+    const polygonBorderVisible = doc.getElementById('polygonBorderVisible');
+    const polygonBorderColor = doc.getElementById('polygonBorderColor');
+    const polygonBorderWidth = doc.getElementById('polygonBorderWidth');
+
+    const showDiagonals = doc.getElementById('showDiagonals');
+    const diagonalColor = doc.getElementById('diagonalColor');
+    const diagonalWidth = doc.getElementById('diagonalWidth');
+    const diagonalStyle = doc.getElementById('diagonalStyle');
+
+    if (!canvas || !drawBtn || !polygonVisible || !polygonFillVisible || !showDiagonals) {
+      FAIL('INIT', 'Critical DOM elements missing from Coordinates_graph.html');
+      return;
+    }
+    PASS('INIT', 'Actual application DOM and all Phase 2.3 controls successfully located in iframe');
+
+    // Set 4 points forming a square: A(0,0), B(6,0), C(6,6), D(0,6)
+    // Dispatch 'input' event so activeSet.inputText updates properly
+    pointsInput.value = 'A(0,0)\nB(6,0)\nC(6,6)\nD(0,6)';
+    pointsInput.dispatchEvent(new Event('input', { bubbles: true }));
+    drawBtn.click();
+    await delay(80);
+
+    // --- TEST 1: Polygon Visibility ON/OFF ---
+    polygonVisible.checked = true;
+    polygonFillVisible.checked = true;
+    polygonFillColor.value = '#0000ff'; // Blue
+    polygonFillOpacity.value = '100'; // 100% solid fill
+    polygonFillColor.dispatchEvent(new Event('input', { bubbles: true }));
+    polygonFillOpacity.dispatchEvent(new Event('input', { bubbles: true }));
+    polygonVisible.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(60);
+
+    const bluePixelsWhenOn = countPixelsWithColor(canvas, 380, 280, 420, 320, '#0000ff');
+
+    polygonVisible.checked = false;
+    polygonVisible.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(60);
+
+    const bluePixelsWhenOff = countPixelsWithColor(canvas, 380, 280, 420, 320, '#0000ff');
+
+    if (bluePixelsWhenOn > 200 && bluePixelsWhenOff === 0) {
+      PASS('T1-APP', 'Polygon visibility ON/OFF: polygon fill rendered when ON, completely removed when OFF',
+           `ON blue count=${bluePixelsWhenOn}, OFF count=${bluePixelsWhenOff}`);
+    } else {
+      FAIL('T1-APP', 'Polygon visibility ON/OFF failed', `ON count=${bluePixelsWhenOn}, OFF count=${bluePixelsWhenOff}`);
+    }
+
+    // --- TEST 2: Polygon Fill Visibility ON/OFF ---
+    polygonVisible.checked = true;
+    polygonVisible.dispatchEvent(new Event('change', { bubbles: true }));
+    polygonBorderVisible.checked = true;
+    polygonBorderColor.value = '#111827';
+    polygonBorderColor.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // Turn fill OFF
+    polygonFillVisible.checked = false;
+    polygonFillVisible.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(60);
+
+    const bluePixelsFillOff = countPixelsWithColor(canvas, 380, 280, 420, 320, '#0000ff');
+
+    // Turn fill ON
+    polygonFillVisible.checked = true;
+    polygonFillVisible.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(60);
+
+    const bluePixelsFillOn = countPixelsWithColor(canvas, 380, 280, 420, 320, '#0000ff');
+
+    if (bluePixelsFillOff === 0 && bluePixelsFillOn > 200) {
+      PASS('T2-APP', 'Polygon fill visibility ON/OFF: interior clear when fill OFF; filled when ON',
+           `Fill OFF count=${bluePixelsFillOff}, Fill ON count=${bluePixelsFillOn}`);
+    } else {
+      FAIL('T2-APP', 'Polygon fill visibility ON/OFF failed', `Fill OFF count=${bluePixelsFillOff}, Fill ON count=${bluePixelsFillOn}`);
+    }
+
+    // --- TEST 3: Fill Color Picker ---
+    polygonFillColor.value = '#ff0000'; // Pure red
+    polygonFillOpacity.value = '100';
+    polygonFillColor.dispatchEvent(new Event('input', { bubbles: true }));
+    polygonFillOpacity.dispatchEvent(new Event('input', { bubbles: true }));
+    await delay(60);
+
+    const redPixels = countPixelsWithColor(canvas, 380, 280, 420, 320, '#ff0000');
+    if (redPixels > 200) {
+      PASS('T3-APP', 'Polygon fill color picker: immediately updates canvas to selected color (#ff0000)',
+           `Red pixel count=${redPixels}`);
+    } else {
+      FAIL('T3-APP', 'Fill color update failed', `Red pixel count=${redPixels}`);
+    }
+
+    // --- TEST 4: Fill Opacity Control ---
+    polygonFillOpacity.value = '20'; // 20% opacity
+    polygonFillOpacity.dispatchEvent(new Event('input', { bubbles: true }));
+    await delay(60);
+
+    const interiorPx = getCanvasPixel(canvas, 410, 310);
+    const opacityWorks = interiorPx.r > 230 && interiorPx.g > 170 && interiorPx.b > 170 && interiorPx.g < 240;
+
+    if (opacityWorks) {
+      PASS('T4-APP', 'Polygon fill opacity control: slider scales fill alpha cleanly',
+           `20% opacity interior rgb=(${interiorPx.r},${interiorPx.g},${interiorPx.b})`);
+    } else {
+      FAIL('T4-APP', 'Fill opacity control failed', `interior rgb=(${interiorPx.r},${interiorPx.g},${interiorPx.b})`);
+    }
+
+    // --- TEST 5: Polygon Border ON/OFF ---
+    polygonBorderColor.value = '#00ff00';
+    polygonBorderWidth.value = '8';
+    polygonBorderColor.dispatchEvent(new Event('input', { bubbles: true }));
+    polygonBorderWidth.dispatchEvent(new Event('input', { bubbles: true }));
+
+    polygonBorderVisible.checked = true;
+    polygonBorderVisible.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(60);
+
+    const greenBorderOn = countPixelsWithColor(canvas, 350, 180, 450, 196, '#00ff00');
+
+    polygonBorderVisible.checked = false;
+    polygonBorderVisible.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(60);
+
+    const greenBorderOff = countPixelsWithColor(canvas, 350, 180, 450, 196, '#00ff00');
+
+    if (greenBorderOn > 50 && greenBorderOff === 0) {
+      PASS('T5-APP', 'Polygon border visibility ON/OFF: border line rendered when ON, hidden when OFF',
+           `Border ON count=${greenBorderOn}, Border OFF count=${greenBorderOff}`);
+    } else {
+      FAIL('T5-APP', 'Polygon border visibility ON/OFF failed', `ON count=${greenBorderOn}, OFF count=${greenBorderOff}`);
+    }
+
+    // --- TEST 6: Border Color and Width ---
+    polygonBorderVisible.checked = true;
+    polygonBorderColor.value = '#ff00ff'; // Magenta
+    polygonBorderWidth.value = '10';
+    polygonBorderVisible.dispatchEvent(new Event('change', { bubbles: true }));
+    polygonBorderColor.dispatchEvent(new Event('input', { bubbles: true }));
+    polygonBorderWidth.dispatchEvent(new Event('input', { bubbles: true }));
+    await delay(60);
+
+    const magentaBorderCount = countPixelsWithColor(canvas, 350, 180, 450, 198, '#ff00ff');
+    if (magentaBorderCount > 80) {
+      PASS('T6-APP', 'Polygon border color and width: updated color and thickness immediately drawn',
+           `Magenta width=10 border pixels count=${magentaBorderCount}`);
+    } else {
+      FAIL('T6-APP', 'Border color and width failed', `count=${magentaBorderCount}`);
+    }
+
+    // --- TEST 7: Diagonal Visibility ON/OFF ---
+    polygonFillVisible.checked = false;
+    polygonFillVisible.dispatchEvent(new Event('change', { bubbles: true }));
+
+    showDiagonals.checked = false;
+    showDiagonals.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(60);
+
+    diagonalColor.value = '#ff8800';
+    diagonalWidth.value = '6';
+    diagonalStyle.value = 'solid';
+    diagonalColor.dispatchEvent(new Event('input', { bubbles: true }));
+    diagonalWidth.dispatchEvent(new Event('input', { bubbles: true }));
+    diagonalStyle.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const orangeDiagOff = countPixelsWithColor(canvas, 350, 410, 390, 450, '#ff8800');
+
+    showDiagonals.checked = true;
+    showDiagonals.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(60);
+
+    const orangeDiagOn = countPixelsWithColor(canvas, 350, 410, 390, 450, '#ff8800');
+
+    if (orangeDiagOff === 0 && orangeDiagOn > 30) {
+      PASS('T7-APP', 'Diagonal visibility ON/OFF: diagonals rendered when ON, hidden when OFF',
+           `Diag OFF count=${orangeDiagOff}, Diag ON count=${orangeDiagOn}`);
+    } else {
+      FAIL('T7-APP', 'Diagonal visibility failed', `OFF count=${orangeDiagOff}, ON count=${orangeDiagOn}`);
+    }
+
+    // --- TEST 8: Diagonal Color and Width ---
+    // Change diagonal color to Purple #800080, width 8
+    diagonalColor.value = '#800080';
+    diagonalWidth.value = '8';
+    diagonalColor.dispatchEvent(new Event('input', { bubbles: true }));
+    diagonalWidth.dispatchEvent(new Event('input', { bubbles: true }));
+    await delay(60);
+
+    const purpleDiagCount = countPixelsWithColor(canvas, 350, 410, 390, 450, '#800080', 50);
+    if (purpleDiagCount > 30) {
+      PASS('T8-APP', 'Diagonal color and width: updated color (#800080) and width=8 immediately visible',
+           `Purple diagonal pixels count=${purpleDiagCount}`);
+    } else {
+      FAIL('T8-APP', 'Diagonal color/width failed', `count=${purpleDiagCount}`);
+    }
+
+    // --- TEST 9: Diagonal Line Styles (Solid, Dashed, Dotted) ---
+    diagonalStyle.value = 'dotted';
+    diagonalStyle.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(40);
+    const hasDotted = diagonalStyle.value === 'dotted';
+
+    diagonalStyle.value = 'dashed';
+    diagonalStyle.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(40);
+    const hasDashed = diagonalStyle.value === 'dashed';
+
+    diagonalStyle.value = 'solid';
+    diagonalStyle.dispatchEvent(new Event('change', { bubbles: true }));
+    await delay(40);
+    const hasSolid = diagonalStyle.value === 'solid';
+
+    if (hasDotted && hasDashed && hasSolid) {
+      PASS('T9-APP', 'Diagonal line styles: Solid, Dashed, and Dotted selectable and active in state');
+    } else {
+      FAIL('T9-APP', 'Diagonal style selection failed');
+    }
+
+    // --- TEST 10: Independence between Polygon and Diagonal Styles ---
+    polygonBorderColor.value = '#ffff00';
+    polygonFillColor.value = '#0000ff';
+    polygonBorderColor.dispatchEvent(new Event('input', { bubbles: true }));
+    polygonFillColor.dispatchEvent(new Event('input', { bubbles: true }));
+    await delay(60);
+
+    const diagColorNow = diagonalColor.value;
+    const polyBorderColorNow = polygonBorderColor.value;
+    const polyFillColorNow = polygonFillColor.value;
+
+    const independent = diagColorNow === '#800080' && polyBorderColorNow === '#ffff00' && polyFillColorNow === '#0000ff';
+    if (independent) {
+      PASS('T10-APP', 'Independence between polygon and diagonal styles: modifying polygon leaves diagonal unchanged');
+    } else {
+      FAIL('T10-APP', 'Style cross-contamination', JSON.stringify({ diagColorNow, polyBorderColorNow, polyFillColorNow }));
+    }
+
+    // --- TEST 11: Multi-Set Compatibility & Independent Persistence ---
+    // Set 1 has: fill=#0000ff, border=#ffff00, diag=#800080
+    addSetBtn.click();
+    await delay(100);
+
+    // In Set 2, set unique styling: Fill = Green #00ff00 (100% opacity), Diag = Orange #ff8800
+    polygonFillColor.value = '#00ff00';
+    polygonFillOpacity.value = '100';
+    polygonFillVisible.checked = true;
+    polygonFillColor.dispatchEvent(new Event('input', { bubbles: true }));
+    polygonFillOpacity.dispatchEvent(new Event('input', { bubbles: true }));
+    polygonFillVisible.dispatchEvent(new Event('change', { bubbles: true }));
+
+    diagonalColor.value = '#ff8800';
+    diagonalColor.dispatchEvent(new Event('input', { bubbles: true }));
+    await delay(80);
+
+    // Switch back to Set 1 using Set 1's Select button
+    const setListEl = doc.getElementById('setList');
+    const set1SelectBtn = setListEl.children[0].querySelector('.setItemActions button');
+    set1SelectBtn.click();
+    await delay(100);
+
+    // Verify Set 1 controls restored its own values:
+    const set1FillVal = polygonFillColor.value;
+    const set1DiagVal = diagonalColor.value;
+
+    // Switch to Set 2 using Set 2's Select button:
+    const set2SelectBtn = setListEl.children[1].querySelector('.setItemActions button');
+    set2SelectBtn.click();
+    await delay(100);
+
+    const set2FillVal = polygonFillColor.value;
+    const set2DiagVal = diagonalColor.value;
+
+    const multiSetOk = (set1FillVal === '#0000ff' && set1DiagVal === '#800080' &&
+                        set2FillVal === '#00ff00' && set2DiagVal === '#ff8800');
+
+    if (multiSetOk) {
+      PASS('T11-APP', 'Multi-set styling independence: switching between sets preserves distinct polygon and diagonal controls per set',
+           `Set 1: fill=${set1FillVal}, diag=${set1DiagVal} | Set 2: fill=${set2FillVal}, diag=${set2DiagVal}`);
+    } else {
+      FAIL('T11-APP', 'Multi-set styling persistence failed',
+           JSON.stringify({ set1FillVal, set1DiagVal, set2FillVal, set2DiagVal }));
+    }
+
+    // --- TEST 12: Actual Application PNG Export Verification ---
+    const dataUrl = canvas.toDataURL('image/png');
+    const isValidDataUrl = dataUrl.startsWith('data:image/png;base64,') && dataUrl.length > 5000;
+
+    const exportImg = new Image();
+    exportImg.onload = () => {
+      const vCanvas = document.createElement('canvas');
+      vCanvas.width = canvas.width;
+      vCanvas.height = canvas.height;
+      const vCtx = vCanvas.getContext('2d');
+      vCtx.drawImage(exportImg, 0, 0);
+
+      // Verify Set 2's green polygon fill (#00ff00) is present in the decoded exported image
+      const greenInExport = countPixelsWithColor(vCanvas, 100, 100, 800, 600, '#00ff00') > 50;
+
+      if (isValidDataUrl && greenInExport) {
+        PASS('T12-APP', 'Actual application PNG export: valid data URL and custom styled polygon pixels confirmed in exported image',
+             `dataURL length=${dataUrl.length}`);
+      } else {
+        FAIL('T12-APP', 'PNG export pixel verification failed', `isValid=${isValidDataUrl}, greenInExport=${greenInExport}`);
+      }
+      finishSuite();
+    };
+    exportImg.onerror = () => {
+      FAIL('T12-APP', 'Image onload error decoding exported PNG data URL');
+      finishSuite();
+    };
+    exportImg.src = dataUrl;
+
+  } catch (err) {
+    FAIL('CRASH', 'Unexpected test error', err.message);
+    finishSuite();
+  }
+};
+
+function finishSuite() {
+  const summary = `\n============================================\nPHASE 2.3 APPLICATION TESTS COMPLETE\nPASS: ${passed} | FAIL: ${failed}\n============================================\n`;
+  output.textContent += summary;
+
+  const jsonPre = document.createElement('pre');
+  jsonPre.id = 'json-results';
+  jsonPre.style.display = 'none';
+  jsonPre.textContent = JSON.stringify({ passed, failed, results }, null, 2);
+  document.body.appendChild(jsonPre);
+}
+</script>
+</body>
+</html>

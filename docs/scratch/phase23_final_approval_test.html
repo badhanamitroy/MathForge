@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Phase 2.3 Final Approval Verification Suite</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    .pass { color: green; font-weight: bold; }
+    .fail { color: red; font-weight: bold; }
+    iframe { width: 1200px; height: 900px; border: 1px solid #ccc; }
+    pre { background: #f5f5f5; padding: 10px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Phase 2.3 Final Approval Verification Suite</h1>
+  <div id="status">Loading application iframe...</div>
+  <pre id="output"></pre>
+  <iframe id="appFrame" src="../../Coordinates_graph.html"></iframe>
+
+  <script>
+    const logEl = document.getElementById('output');
+    const results = [];
+
+    function log(msg) {
+      logEl.textContent += msg + '\n';
+      console.log(msg);
+    }
+
+    function PASS(id, title, details) {
+      results.push({ id, status: 'PASS', title, details });
+      log(`[PASS] [${id}] ${title}${details ? ' — ' + details : ''}`);
+    }
+
+    function FAIL(id, title, details) {
+      results.push({ id, status: 'FAIL', title, details });
+      log(`[FAIL] [${id}] ${title}${details ? ' — ' + details : ''}`);
+    }
+
+    const frame = document.getElementById('appFrame');
+
+    frame.onload = async () => {
+      try {
+        const doc = frame.contentDocument;
+        const win = frame.contentWindow;
+
+        // Verify Real Application elements
+        const canvas = doc.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const pointsInput = doc.getElementById('pointsInput');
+        const drawBtn = doc.getElementById('drawBtn');
+        const downloadBtn = doc.getElementById('downloadBtn');
+        const resetBtn = doc.getElementById('resetBtn');
+
+        const polygonVisibleEl = doc.getElementById('polygonVisible');
+        const polygonFillVisibleEl = doc.getElementById('polygonFillVisible');
+        const polygonFillColorEl = doc.getElementById('polygonFillColor');
+        const polygonFillOpacityEl = doc.getElementById('polygonFillOpacity');
+        const polygonBorderVisibleEl = doc.getElementById('polygonBorderVisible');
+        const polygonBorderColorEl = doc.getElementById('polygonBorderColor');
+        const polygonBorderWidthEl = doc.getElementById('polygonBorderWidth');
+
+        const showDiagonalsEl = doc.getElementById('showDiagonals');
+        const diagonalColorEl = doc.getElementById('diagonalColor');
+        const diagonalWidthEl = doc.getElementById('diagonalWidth');
+        const diagonalStyleEl = doc.getElementById('diagonalStyle');
+
+        if (!canvas || !polygonFillVisibleEl || !showDiagonalsEl || !diagonalStyleEl) {
+          FAIL('INIT', 'Real application controls not found in iframe');
+          return;
+        }
+        PASS('INIT', 'Real application controls verified in iframe DOM', 'Found all Phase 2.3 elements');
+
+        // Helper to dispatch input & change
+        function triggerChange(el) {
+          el.dispatchEvent(new win.Event('input', { bubbles: true }));
+          el.dispatchEvent(new win.Event('change', { bubbles: true }));
+        }
+
+        // Setup a clear 4-point square polygon for deterministic diagonal testing
+        // Points: A(0,0), B(6,0), C(6,6), D(0,6)
+        // Diagonals run: A-C (from (0,0) to (6,6)) and B-D (from (6,0) to (0,6))
+        pointsInput.value = 'A(0,0)\nB(6,0)\nC(6,6)\nD(0,6)';
+        triggerChange(pointsInput);
+        drawBtn.click();
+
+        // Configure clear diagonal appearance: purple (#800080), width = 6
+        showDiagonalsEl.checked = true;
+        triggerChange(showDiagonalsEl);
+
+        diagonalColorEl.value = '#800080'; // rgb(128, 0, 128)
+        triggerChange(diagonalColorEl);
+
+        diagonalWidthEl.value = '6';
+        triggerChange(diagonalWidthEl);
+
+        // Turn OFF fill and border so only diagonals are in the interior
+        polygonFillVisibleEl.checked = false;
+        triggerChange(polygonFillVisibleEl);
+        polygonBorderVisibleEl.checked = true;
+        polygonBorderColorEl.value = '#0000ff'; // Blue border
+        polygonBorderWidthEl.value = '4';
+        triggerChange(polygonBorderWidthEl);
+
+        function getDiagonalPixels() {
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imgData.data;
+          let purpleCount = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+            // Purple: high R and B, low G
+            if (r > 80 && r < 180 && g < 50 && b > 80 && b < 180 && a > 150) {
+              purpleCount++;
+            }
+          }
+          return { purpleCount };
+        }
+
+        // ==========================================
+        // TEST 1 — ACTUAL DIAGONAL RENDERING
+        // ==========================================
+
+        // 1.1 Solid Diagonals
+        diagonalStyleEl.value = 'solid';
+        triggerChange(diagonalStyleEl);
+        const solidStats = getDiagonalPixels();
+
+        // 1.2 Dashed Diagonals
+        diagonalStyleEl.value = 'dashed';
+        triggerChange(diagonalStyleEl);
+        const dashedStats = getDiagonalPixels();
+
+        // 1.3 Dotted Diagonals
+        diagonalStyleEl.value = 'dotted';
+        triggerChange(diagonalStyleEl);
+        const dottedStats = getDiagonalPixels();
+
+        log(`Diagonal pixel counts -> Solid: ${solidStats.purpleCount}, Dashed: ${dashedStats.purpleCount}, Dotted: ${dottedStats.purpleCount}`);
+
+        if (solidStats.purpleCount > 0 &&
+            solidStats.purpleCount > dashedStats.purpleCount &&
+            dashedStats.purpleCount > dottedStats.purpleCount &&
+            dottedStats.purpleCount > 0) {
+          PASS('TEST-1.1-1.3', 'Diagonal line styles render with distinct physical patterns',
+               `Solid=${solidStats.purpleCount}px (continuous line), Dashed=${dashedStats.purpleCount}px (with visible gaps, ${Math.round(dashedStats.purpleCount/solidStats.purpleCount*100)}%), Dotted=${dottedStats.purpleCount}px (short marks, ${Math.round(dottedStats.purpleCount/solidStats.purpleCount*100)}%)`);
+        } else {
+          FAIL('TEST-1.1-1.3', 'Diagonal styles failed pixel density expectations',
+               `Solid=${solidStats.purpleCount}, Dashed=${dashedStats.purpleCount}, Dotted=${dottedStats.purpleCount}`);
+        }
+
+        // 1.4 Immediate Canvas Update on dropdown change
+        diagonalStyleEl.value = 'solid';
+        triggerChange(diagonalStyleEl);
+        const immediateSolid = getDiagonalPixels();
+        diagonalStyleEl.value = 'dashed';
+        triggerChange(diagonalStyleEl);
+        const immediateDashed = getDiagonalPixels();
+        if (immediateSolid.purpleCount === solidStats.purpleCount &&
+            immediateDashed.purpleCount === dashedStats.purpleCount &&
+            immediateSolid.purpleCount !== immediateDashed.purpleCount) {
+          PASS('TEST-1.4', 'Changing line style updates actual canvas immediately without manual redraw click',
+               'Immediate change verified upon select change event');
+        } else {
+          FAIL('TEST-1.4', 'Immediate canvas update failed');
+        }
+
+        // 1.5 Diagonal styling does not alter polygon border styling
+        function getBorderPixels() {
+          const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const data = imgData.data;
+          let blueCount = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+            if (r < 50 && g < 50 && b > 200 && a > 150) {
+              blueCount++;
+            }
+          }
+          return blueCount;
+        }
+
+        const borderBefore = getBorderPixels();
+        diagonalColorEl.value = '#00ff00';
+        triggerChange(diagonalColorEl);
+        diagonalWidthEl.value = '10';
+        triggerChange(diagonalWidthEl);
+        diagonalStyleEl.value = 'dotted';
+        triggerChange(diagonalStyleEl);
+        const borderAfter = getBorderPixels();
+
+        if (borderBefore > 500 && borderBefore === borderAfter) {
+          PASS('TEST-1.5', 'Diagonal styling does not change polygon border styling',
+               `Blue border pixels remain identical (${borderBefore}px before vs ${borderAfter}px after)`);
+        } else {
+          FAIL('TEST-1.5', 'Border changed when diagonal modified', `Before=${borderBefore}, After=${borderAfter}`);
+        }
+
+        // ==========================================
+        // TEST 2 — ACTUAL PNG EXPORT VIA BUTTON CLICK
+        // ==========================================
+
+        // Configure custom options for export test
+        // 1. Polygon Fill Visible = true
+        polygonFillVisibleEl.checked = true;
+        triggerChange(polygonFillVisibleEl);
+
+        // 2. Custom Fill Color = #00cc66 (Emerald Green)
+        polygonFillColorEl.value = '#00cc66';
+        triggerChange(polygonFillColorEl);
+
+        // 3. Custom Fill Opacity = 40%
+        polygonFillOpacityEl.value = '40';
+        triggerChange(polygonFillOpacityEl);
+
+        // 4. Custom Polygon Border Color = #ff6600 (Orange)
+        polygonBorderColorEl.value = '#ff6600';
+        triggerChange(polygonBorderColorEl);
+
+        // 5. Custom Polygon Border Width = 8px
+        polygonBorderWidthEl.value = '8';
+        triggerChange(polygonBorderWidthEl);
+
+        // 6. Custom Diagonal Color = #800080 (Purple)
+        diagonalColorEl.value = '#800080';
+        triggerChange(diagonalColorEl);
+
+        // 7. Custom Diagonal Width = 6px
+        diagonalWidthEl.value = '6';
+        triggerChange(diagonalWidthEl);
+
+        // 8. Custom Diagonal Style = dashed
+        diagonalStyleEl.value = 'dashed';
+        triggerChange(diagonalStyleEl);
+
+        // Intercept real application downloadBtn click
+        let interceptedLink = null;
+        const origAnchorClick = win.HTMLAnchorElement.prototype.click;
+        win.HTMLAnchorElement.prototype.click = function() {
+          interceptedLink = {
+            download: this.download,
+            href: this.href
+          };
+        };
+
+        // Click the actual application button!
+        downloadBtn.click();
+        win.HTMLAnchorElement.prototype.click = origAnchorClick;
+
+        if (!interceptedLink || !interceptedLink.href.startsWith('data:image/png;base64,')) {
+          FAIL('TEST-2-BTN', 'Actual application #downloadBtn failed to generate PNG data URL',
+               `Intercepted: ${JSON.stringify(interceptedLink)}`);
+        } else {
+          PASS('TEST-2-BTN', 'Actual application #downloadBtn clicked and intercepted',
+               `Filename="${interceptedLink.download}", dataURL length=${interceptedLink.href.length}`);
+
+          // Decode exported PNG image onto offscreen canvas and verify pixels
+          const img = new Image();
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = interceptedLink.href;
+          });
+
+          const testCanvas = document.createElement('canvas');
+          testCanvas.width = img.width;
+          testCanvas.height = img.height;
+          const tCtx = testCanvas.getContext('2d');
+          tCtx.drawImage(img, 0, 0);
+
+          const tImgData = tCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
+          const d = tImgData.data;
+
+          // 1. Fill color #00cc66 at 40% opacity on white background:
+          //    Background: (255, 255, 255)
+          //    Fill RGB: (0, 204, 102)
+          //    Blended: (153, 235, 194)
+          let fillPixels = 0;
+          // 2. Border color #ff6600 (Orange: R >= 220, G: 70..130, B <= 30)
+          let borderPixels = 0;
+          // 3. Diagonal color #800080 overlaid by 40% fill:
+          //    Diagonal RGB: (128, 0, 128)
+          //    Layered with 40% green (0, 204, 102):
+          //    Blended: R ~ 77, G ~ 82, B ~ 118
+          let diagonalPixels = 0;
+
+          for (let i = 0; i < d.length; i += 4) {
+            const r = d[i], g = d[i+1], b = d[i+2], a = d[i+3];
+            // Blended 40% fill check
+            if (r >= 140 && r <= 165 && g >= 225 && g <= 245 && b >= 185 && b <= 205 && a === 255) {
+              fillPixels++;
+            }
+            // Orange border check
+            if (r >= 220 && g >= 70 && g <= 130 && b <= 30 && a === 255) {
+              borderPixels++;
+            }
+            // Blended diagonal check (darker purple stroke through the green fill)
+            if (r >= 60 && r <= 95 && g >= 65 && g <= 100 && b >= 100 && b <= 135 && a === 255) {
+              diagonalPixels++;
+            }
+          }
+
+          log(`Exported PNG pixel audit -> Blended Fill (40%): ${fillPixels}px, Orange Border (8px): ${borderPixels}px, Blended Dashed Diagonal: ${diagonalPixels}px`);
+
+          if (fillPixels > 500) {
+            PASS('TEST-2.1', 'Decoded PNG preserves customized polygon fill color (#00cc66) and 40% opacity',
+                 `Blended fill pixels count=${fillPixels}`);
+          } else {
+            FAIL('TEST-2.1', 'Decoded PNG missing blended fill pixels', `Found ${fillPixels}px`);
+          }
+
+          if (borderPixels > 300) {
+            PASS('TEST-2.2', 'Decoded PNG preserves customized polygon border color (#ff6600) and width (8px)',
+                 `Orange border pixels count=${borderPixels}`);
+          } else {
+            FAIL('TEST-2.2', 'Decoded PNG missing orange border pixels', `Found ${borderPixels}px`);
+          }
+
+          if (diagonalPixels > 100) {
+            PASS('TEST-2.3', 'Decoded PNG preserves customized dashed diagonal color (#800080) and width (6px)',
+                 `Blended dashed diagonal pixels count=${diagonalPixels}`);
+          } else {
+            FAIL('TEST-2.3', 'Decoded PNG missing dashed diagonal pixels', `Found ${diagonalPixels}px`);
+          }
+        }
+
+        // ==========================================
+        // TEST 3 — ACTUAL APPLICATION CONTROLS AUDIT
+        // ==========================================
+        // Verify genuine interaction:
+        // 1. Application is loaded directly via iframe src="../../Coordinates_graph.html"
+        // 2. All 11 UI controls are native DOM elements from the live document
+        // 3. Changing an input fires the real event listener and alters the live canvas
+        // 4. Clicking the real #downloadBtn executes the application's actual handler
+        const isIframeValid = win.location.href.includes('Coordinates_graph.html');
+        const hasAllLiveInputs = [
+          polygonVisibleEl, polygonFillVisibleEl, polygonFillColorEl, polygonFillOpacityEl,
+          polygonBorderVisibleEl, polygonBorderColorEl, polygonBorderWidthEl,
+          showDiagonalsEl, diagonalColorEl, diagonalWidthEl, diagonalStyleEl
+        ].every(el => el instanceof win.HTMLElement);
+
+        if (isIframeValid && hasAllLiveInputs) {
+          PASS('TEST-3', 'Verified interaction with real application in iframe',
+               `URL: ${win.location.href}; all 11 UI controls are live DOM instances driven by real event listeners`);
+        } else {
+          FAIL('TEST-3', 'Failed live application verification');
+        }
+
+        log('\n=== ALL PHASE 2.3 FINAL APPROVAL AUDIT TESTS COMPLETE ===');
+
+      } catch (err) {
+        FAIL('EXCEPTION', 'Unhandled error in test runner', err.stack || err.message);
+      }
+    };
+  </script>
+</body>
+</html>

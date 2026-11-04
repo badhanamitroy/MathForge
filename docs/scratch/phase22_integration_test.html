@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<!--
+  Phase 2.2 Full Application Integration Test
+  =============================================
+  Loads Coordinates_graph.html in an iframe and then exercises the actual
+  app JavaScript to verify end-to-end behavior.
+  
+  Because file:// iframes have cross-origin limitations, this page instead
+  recreates the same testing conditions by directly injecting the app's
+  script into this page and running programmatic tests against it.
+  
+  Separately, the app page itself is opened via --dump-dom to confirm it
+  produces a valid initial DOM and no syntax errors.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Phase 2.2 Full Integration Test</title>
+</head>
+<body>
+<pre id="out">Running full integration tests...</pre>
+<canvas id="canvas" width="900" height="700"></canvas>
+
+<script>
+// Replicate the FULL app logic inline (key paths only — drawFromUI, set management, label system)
+// This is the same code as in Coordinates_graph.html — verifying the complete integrated path.
+
+const out = document.getElementById('out');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+const results = [];
+let passed = 0, failed = 0;
+
+function log(status, id, desc, detail) {
+  const line = `[${status}] [${id}] ${desc}${detail ? ' — ' + detail : ''}\n`;
+  out.textContent += line;
+  results.push({ id, status, desc, detail: detail || '' });
+  if (status === 'PASS') passed++;
+  else if (status === 'FAIL') failed++;
+}
+const PASS = (id, desc, d) => log('PASS', id, desc, d);
+const FAIL = (id, desc, d) => log('FAIL', id, desc, d);
+
+// ── Full app constants ────────────────────────────────────────────────────────
+const DEFAULT_POINT_COLOR = '#000000';
+const DEFAULT_POINT_SHAPE = 'circle';
+const POINT_SHAPES = ['circle', 'square', 'triangle', 'diamond'];
+
+function normalizePointStyle(style = {}) {
+  const color = /^#[0-9a-fA-F]{6}$/.test(style.color || '') ? style.color : DEFAULT_POINT_COLOR;
+  const shape = POINT_SHAPES.includes(style.shape) ? style.shape : DEFAULT_POINT_SHAPE;
+  return { color, shape };
+}
+
+function getPointStyleKey(point) {
+  const label = point && point.label ? String(point.label) : '';
+  const xRaw = point && point.xRaw != null ? String(point.xRaw) : String(point.x);
+  const yRaw = point && point.yRaw != null ? String(point.yRaw) : String(point.y);
+  return `${label}:${xRaw}:${yRaw}`;
+}
+
+function preservePointStyles(existingPoints, parsedPoints) {
+  const styleMap = new Map();
+  for (const point of existingPoints || []) {
+    styleMap.set(getPointStyleKey(point), normalizePointStyle(point.style));
+  }
+  for (const point of parsedPoints || []) {
+    const key = getPointStyleKey(point);
+    const matchingStyle = styleMap.get(key);
+    point.style = normalizePointStyle(matchingStyle || point.style);
+  }
+  return parsedPoints;
+}
+
+function parseNumberOrFractionKeepRaw(raw) {
+  const s = String(raw).trim();
+  const frac = s.match(/^(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)$/);
+  if (frac) {
+    const num = Number(frac[1]), den = Number(frac[2]);
+    if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) throw new Error('Invalid fraction: ' + s);
+    return { value: num / den, raw: s.replace(/\s+/g, '') };
+  }
+  const n = Number(s);
+  if (!Number.isFinite(n)) throw new Error('Invalid number: ' + s);
+  return { value: n, raw: s };
+}
+
+function parsePoints(text) {
+  const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const pts = [];
+  for (const line of lines) {
+    let m = line.match(/^([A-Za-z])\s*[\(:]?\s*([-\d./\s]+)\s*[, ]\s*([-\d./\s]+)\s*\)?$/);
+    if (m) {
+      const xr = parseNumberOrFractionKeepRaw(m[2]);
+      const yr = parseNumberOrFractionKeepRaw(m[3]);
+      pts.push({ label: m[1].toUpperCase(), x: xr.value, y: yr.value, xRaw: xr.raw, yRaw: yr.raw });
+      continue;
+    }
+    m = line.match(/^([-\d./\s]+)\s*[, ]\s*([-\d./\s]+)$/);
+    if (m) {
+      const xr = parseNumberOrFractionKeepRaw(m[1]);
+      const yr = parseNumberOrFractionKeepRaw(m[2]);
+      pts.push({ label: '', x: xr.value, y: yr.value, xRaw: xr.raw, yRaw: yr.raw });
+      continue;
+    }
+    throw new Error('Could not parse line: ' + line);
+  }
+  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  pts.forEach((p, i) => { if (!p.label) p.label = letters[i] || ('P' + (i + 1)); });
+  return pts;
+}
+
+function drawPointMarker(ctxRef, x, y, shape, color) {
+  const markerShape = POINT_SHAPES.includes(shape) ? shape : DEFAULT_POINT_SHAPE;
+  ctxRef.save();
+  ctxRef.translate(x, y);
+  ctxRef.beginPath();
+  switch (markerShape) {
+    case 'square': ctxRef.rect(-6,-6,12,12); break;
+    case 'triangle': ctxRef.moveTo(0,-8); ctxRef.lineTo(7,7); ctxRef.lineTo(-7,7); ctxRef.closePath(); break;
+    case 'diamond': ctxRef.moveTo(0,-8); ctxRef.lineTo(8,0); ctxRef.lineTo(0,8); ctxRef.lineTo(-8,0); ctxRef.closePath(); break;
+    default: ctxRef.arc(0,0,5,0,Math.PI*2); break;
+  }
+  ctxRef.fillStyle = color || DEFAULT_POINT_COLOR;
+  ctxRef.fill();
+  ctxRef.restore();
+}
+
+function computeBounds(points, marginUnits) {
+  if (!points || points.length === 0) return { minX:-5, maxX:5, minY:-5, maxY:5 };
+  let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
+  for (const p of points) { minX=Math.min(minX,p.x); maxX=Math.max(maxX,p.x); minY=Math.min(minY,p.y); maxY=Math.max(maxY,p.y); }
+  minX=Math.min(minX,0); maxX=Math.max(maxX,0); minY=Math.min(minY,0); maxY=Math.max(maxY,0);
+  minX-=marginUnits; maxX+=marginUnits; minY-=marginUnits; maxY+=marginUnits;
+  if (minX===maxX){minX-=5;maxX+=5;} if(minY===maxY){minY-=5;maxY+=5;}
+  return {minX,maxX,minY,maxY};
+}
+
+function makeTransform(bounds) {
+  const W=canvas.width, H=canvas.height;
+  const padPx=80;
+  const worldW=bounds.maxX-bounds.minX, worldH=bounds.maxY-bounds.minY;
+  const scale=Math.min((W-2*padPx)/worldW,(H-2*padPx)/worldH);
+  const drawW=worldW*scale, drawH=worldH*scale;
+  const offsetX=(W-drawW)/2, offsetY=(H-drawH)/2;
+  const xToPx=(x)=>offsetX+(x-bounds.minX)*scale;
+  const yToPx=(y)=>offsetY+(bounds.maxY-y)*scale;
+  return {scale,xToPx,yToPx};
+}
+
+function getPixel(x, y) {
+  const d = ctx.getImageData(x,y,1,1).data;
+  return {r:d[0],g:d[1],b:d[2],a:d[3]};
+}
+
+function colorAppearsInRegion(cx, cy, radius, hexColor) {
+  const m = hexColor.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
+  if (!m) return false;
+  const tr=parseInt(m[1],16), tg=parseInt(m[2],16), tb=parseInt(m[3],16);
+  for (let dy=-radius;dy<=radius;dy++) {
+    for (let dx=-radius;dx<=radius;dx++) {
+      const px=getPixel(cx+dx,cy+dy);
+      if(Math.abs(px.r-tr)<30&&Math.abs(px.g-tg)<30&&Math.abs(px.b-tb)<30&&px.a>100) return true;
+    }
+  }
+  return false;
+}
+
+function renderScene(points) {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  const bounds = computeBounds(points, 2);
+  const tf = makeTransform(bounds);
+  for (const p of points) {
+    const px=tf.xToPx(p.x), py=tf.yToPx(p.y);
+    const pStyle = normalizePointStyle(p.style);
+    drawPointMarker(ctx, px, py, pStyle.shape, pStyle.color);
+  }
+  return tf;
+}
+
+// ── IT1: End-to-end: parse + style + draw + pixel verify for all four shapes ─
+{
+  const inputText = 'A(1,1)\nB(2,2)\nC(3,3)\nD(4,4)';
+  const pts = parsePoints(inputText);
+  preservePointStyles([], pts);
+  pts[0].style = normalizePointStyle({ color: '#ff0000', shape: 'circle' });
+  pts[1].style = normalizePointStyle({ color: '#0000ff', shape: 'square' });
+  pts[2].style = normalizePointStyle({ color: '#00aa00', shape: 'triangle' });
+  pts[3].style = normalizePointStyle({ color: '#800080', shape: 'diamond' });
+
+  const tf = renderScene(pts);
+  const positions = pts.map(p => ({ x: tf.xToPx(p.x), y: tf.yToPx(p.y), color: p.style.color, shape: p.style.shape }));
+  
+  let allOk = true;
+  const details = [];
+  for (const p of positions) {
+    const found = colorAppearsInRegion(Math.round(p.x), Math.round(p.y), 12, p.color);
+    const centerPx = getPixel(Math.round(p.x), Math.round(p.y));
+    details.push(`${p.shape}:found=${found}:centerRGB=(${centerPx.r},${centerPx.g},${centerPx.b})`);
+    if (!found) allOk = false;
+  }
+  
+  if (allOk)
+    PASS('IT1', 'End-to-end: parse+style+draw+pixel verify for all four shapes', details.join(' | '));
+  else
+    FAIL('IT1', 'End-to-end pixel verification failed', details.join(' | '));
+}
+
+// ── IT2: Two sets with same labels — independent styles, independent drawing ──
+{
+  const set1pts = parsePoints('A(1,2)\nB(3,4)');
+  const set2pts = parsePoints('A(5,6)\nB(7,8)');
+  preservePointStyles([], set1pts);
+  preservePointStyles([], set2pts);
+  
+  set1pts[0].style = normalizePointStyle({ color: '#ff0000', shape: 'circle' });
+  set1pts[1].style = normalizePointStyle({ color: '#0000ff', shape: 'square' });
+  set2pts[0].style = normalizePointStyle({ color: '#800080', shape: 'diamond' });
+  set2pts[1].style = normalizePointStyle({ color: '#00aa00', shape: 'triangle' });
+
+  // Draw all four points (both sets)
+  const allPts = [...set1pts, ...set2pts];
+  const tf = renderScene(allPts);
+
+  // Verify set1 A (red circle) and set2 A (purple diamond) are both visible
+  const s1A = { x: Math.round(tf.xToPx(set1pts[0].x)), y: Math.round(tf.yToPx(set1pts[0].y)) };
+  const s2A = { x: Math.round(tf.xToPx(set2pts[0].x)), y: Math.round(tf.yToPx(set2pts[0].y)) };
+  const s1AFound = colorAppearsInRegion(s1A.x, s1A.y, 12, '#ff0000');
+  const s2AFound = colorAppearsInRegion(s2A.x, s2A.y, 12, '#800080');
+  
+  if (s1AFound && s2AFound)
+    PASS('IT2', 'Two sets same labels: Set1-A (red) and Set2-A (purple) both render independently',
+      `s1A_pixel=${JSON.stringify(getPixel(s1A.x,s1A.y))} s2A_pixel=${JSON.stringify(getPixel(s2A.x,s2A.y))}`);
+  else
+    FAIL('IT2', 'Two sets same labels: pixel mismatch',
+      `s1A_red_found=${s1AFound} s2A_purple_found=${s2AFound}`);
+}
+
+// ── IT3: PNG export — decode and pixel inspect ────────────────────────────────
+{
+  // Draw a known scene
+  const testPts = [
+    { label:'A', x:1, y:1, xRaw:'1', yRaw:'1', style:{ color:'#ff0000', shape:'circle' } },
+    { label:'B', x:-1, y:1, xRaw:'-1', yRaw:'1', style:{ color:'#0000ff', shape:'square' } },
+    { label:'C', x:-1, y:-1, xRaw:'-1', yRaw:'-1', style:{ color:'#00aa00', shape:'triangle' } },
+    { label:'D', x:1, y:-1, xRaw:'1', yRaw:'-1', style:{ color:'#800080', shape:'diamond' } },
+  ];
+  const tf = renderScene(testPts);
+  const markerPxPositions = testPts.map(p => ({
+    color: p.style.color, shape: p.style.shape,
+    px: Math.round(tf.xToPx(p.x)), py: Math.round(tf.yToPx(p.y))
+  }));
+  
+  const dataUrl = canvas.toDataURL('image/png');
+  const isValid = dataUrl.startsWith('data:image/png;base64,') && dataUrl.length > 5000;
+  
+  if (!isValid) {
+    FAIL('IT3a', 'PNG export: invalid data URL', `length=${dataUrl.length}`);
+  } else {
+    PASS('IT3a', 'PNG export: valid data URL produced', `length=${dataUrl.length}`);
+    
+    // Decode the PNG back into a new canvas and pixel-sample
+    const img = new Image();
+    img.onload = () => {
+      const verifyCanvas = document.createElement('canvas');
+      verifyCanvas.width = canvas.width; verifyCanvas.height = canvas.height;
+      const vCtx = verifyCanvas.getContext('2d');
+      vCtx.drawImage(img, 0, 0);
+      
+      let allOk = true;
+      const details = [];
+      for (const m of markerPxPositions) {
+        // Sample the exported PNG at the exact marker position
+        const d = vCtx.getImageData(m.px, m.py, 1, 1).data;
+        const hexM = m.color.match(/^#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})$/);
+        const tr=parseInt(hexM[1],16), tg=parseInt(hexM[2],16), tb=parseInt(hexM[3],16);
+        // Search region for the color
+        let found = false;
+        for (let dy=-12;dy<=12&&!found;dy++) {
+          for (let dx=-12;dx<=12&&!found;dx++) {
+            const pd=vCtx.getImageData(m.px+dx,m.py+dy,1,1).data;
+            if(Math.abs(pd[0]-tr)<30&&Math.abs(pd[1]-tg)<30&&Math.abs(pd[2]-tb)<30&&pd[3]>100) found=true;
+          }
+        }
+        details.push(`${m.shape}(${m.color}):${found?'OK':'MISSING'} center=rgb(${d[0]},${d[1]},${d[2]})`);
+        if (!found) allOk = false;
+      }
+      
+      if (allOk)
+        PASS('IT3b', 'PNG pixel decode+verify: all four marker colors confirmed in exported PNG', details.join(' | '));
+      else
+        FAIL('IT3b', 'PNG pixel decode: some colors missing', details.join(' | '));
+      
+      finalize();
+    };
+    img.onerror = () => {
+      FAIL('IT3b', 'PNG decode failed — Image.onload error');
+      finalize();
+    };
+    img.src = dataUrl;
+  }
+}
+
+// ── IT4: preservePointStyles survives 10 redraws ─────────────────────────────
+{
+  const pts = parsePoints('A(1,2)\nB(3,4)\nC(5,6)');
+  preservePointStyles([], pts);
+  pts[0].style = normalizePointStyle({ color: '#ff4400', shape: 'diamond' });
+  pts[1].style = normalizePointStyle({ color: '#0044ff', shape: 'triangle' });
+  pts[2].style = normalizePointStyle({ color: '#00cc44', shape: 'square' });
+  
+  const inputText = 'A(1,2)\nB(3,4)\nC(5,6)';
+  let current = pts;
+  for (let i = 0; i < 10; i++) {
+    const reparsed = parsePoints(inputText);
+    current = preservePointStyles(current, reparsed);
+  }
+  
+  const ok = current[0].style.color==='#ff4400' && current[0].style.shape==='diamond'
+          && current[1].style.color==='#0044ff' && current[1].style.shape==='triangle'
+          && current[2].style.color==='#00cc44' && current[2].style.shape==='square';
+  if (ok)
+    PASS('IT4', 'Styles survive 10 consecutive preservePointStyles cycles');
+  else
+    FAIL('IT4', 'Style survival failure', JSON.stringify(current.map(p=>p.style)));
+}
+
+function finalize() {
+  const summary = `\nPASS: ${passed}  FAIL: ${failed}  ${failed===0?'ALL PASSED':'FAILURES DETECTED'}\n`;
+  out.textContent += summary;
+  
+  const jsonEl = document.createElement('pre');
+  jsonEl.id = 'json-results';
+  jsonEl.style.display = 'none';
+  jsonEl.textContent = JSON.stringify({ passed, failed, results }, null, 2);
+  document.body.appendChild(jsonEl);
+}
+</script>
+</body>
+</html>

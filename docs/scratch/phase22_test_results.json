@@ -1,0 +1,146 @@
+{
+  "passed": 23,
+  "failed": 0,
+  "skipped": 4,
+  "results": [
+    {
+      "id": "T20",
+      "status": "PASS",
+      "desc": "JavaScript syntax check passed (no parse errors)"
+    },
+    {
+      "id": "T1",
+      "status": "PASS",
+      "desc": "Red circle: arc drawn with #ff0000 fill"
+    },
+    {
+      "id": "T2",
+      "status": "PASS",
+      "desc": "Blue square: rect drawn with #0000ff fill"
+    },
+    {
+      "id": "T3",
+      "status": "PASS",
+      "desc": "Green triangle: moveTo/lineTo drawn with #00aa00 fill"
+    },
+    {
+      "id": "T4",
+      "status": "PASS",
+      "desc": "Purple diamond: moveTo/lineTo drawn with #800080 fill"
+    },
+    {
+      "id": "T5",
+      "status": "PASS",
+      "desc": "All four shapes rendered simultaneously with correct colors"
+    },
+    {
+      "id": "T6",
+      "status": "PASS",
+      "desc": "Color change on A does not affect B or C"
+    },
+    {
+      "id": "T7",
+      "status": "PASS",
+      "desc": "Shape change on B does not affect A or C"
+    },
+    {
+      "id": "T8",
+      "status": "PASS",
+      "desc": "Mutating D leaves A, B, C unchanged"
+    },
+    {
+      "id": "T9",
+      "status": "PASS",
+      "desc": "Two sets with identical labels A/B/C store independent styles"
+    },
+    {
+      "id": "T10",
+      "status": "PASS",
+      "desc": "preservePointStyles keeps styles independent across sets with identical coordinates"
+    },
+    {
+      "id": "T11",
+      "status": "PASS",
+      "desc": "Removing set-a leaves set-b and set-c styles intact"
+    },
+    {
+      "id": "T12",
+      "status": "PASS",
+      "desc": "Edit coordinates: A style preserved; B gets default because key changed"
+    },
+    {
+      "id": "T13",
+      "status": "PASS",
+      "desc": "Legacy x,y input parsed and auto-labelled A/B/C"
+    },
+    {
+      "id": "T14",
+      "status": "PASS",
+      "desc": "Fraction coordinates parsed with correct raw strings"
+    },
+    {
+      "id": "T15",
+      "status": "PASS",
+      "desc": "Reset/sample text parses to correct 3 points with fraction"
+    },
+    {
+      "id": "T16",
+      "status": "NOT TESTED",
+      "desc": "PNG export pixel verification",
+      "reason": "Canvas toDataURL requires a real browser; no Playwright installed. Data-URL length check and marker pixel inspection cannot run in Node.js without canvas polyfill. Manual browser verification required — see Section 8 of the report."
+    },
+    {
+      "id": "T17a",
+      "status": "PASS",
+      "desc": "Label drag offset arithmetic: (20,-20) + mouse delta (86,86) = (106,66)"
+    },
+    {
+      "id": "T17b",
+      "status": "NOT TESTED",
+      "desc": "Label drag real browser pointer interaction",
+      "reason": "Playwright not installed; real mouse drag on canvas cannot be automated. The previous manual verification pass (2026-11-01) confirmed M1-M7 passed."
+    },
+    {
+      "id": "T18",
+      "status": "NOT TESTED",
+      "desc": "Direct file:// execution in real browser",
+      "reason": "Playwright not installed. file:// loading cannot be verified from Node.js. Previous manual and automated passes confirmed direct file:// operation."
+    },
+    {
+      "id": "T19",
+      "status": "NOT TESTED",
+      "desc": "Browser console errors during runtime",
+      "reason": "Playwright not installed. Runtime error monitoring requires a real browser session. T20 (syntax check) passed, covering static parse errors."
+    },
+    {
+      "id": "EDGE1",
+      "status": "PASS",
+      "desc": "normalizePointStyle: empty input yields default black circle"
+    },
+    {
+      "id": "EDGE2",
+      "status": "PASS",
+      "desc": "normalizePointStyle: invalid color/shape falls back to defaults"
+    },
+    {
+      "id": "EDGE3",
+      "status": "PASS",
+      "desc": "normalizePointStyle: valid uppercase hex + diamond preserved"
+    },
+    {
+      "id": "BOUNDS",
+      "status": "PASS",
+      "desc": "computeBounds: includes origin, adds margin, correct min/max"
+    },
+    {
+      "id": "KEY1",
+      "status": "PASS",
+      "desc": "getPointStyleKey: same label, different coords → different keys"
+    },
+    {
+      "id": "KEY2",
+      "status": "PASS",
+      "desc": "getPointStyleKey: same value but different raw (\"1/1\" vs \"1\") → different keys (expected)"
+    }
+  ]
+}

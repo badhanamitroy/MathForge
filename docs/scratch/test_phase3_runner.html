@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Phase 3 Integration Test Harness</title></head>
+<body>
+<div id="results">RUNNING</div>
+<pre id="log" style="white-space: pre-wrap; font-family: monospace; font-size: 12px;"></pre>
+<iframe id="standaloneFrame" style="width:1200px; height:800px;"></iframe>
+<iframe id="workspaceFrame" style="width:1200px; height:800px;"></iframe>
+
+<script>
+const logEl = document.getElementById('log');
+function log(msg) {
+  logEl.textContent += msg + '\n';
+  console.log(msg);
+}
+
+let standaloneReady = false;
+let workspaceReady = false;
+
+const standaloneFrame = document.getElementById('standaloneFrame');
+const workspaceFrame = document.getElementById('workspaceFrame');
+
+standaloneFrame.onload = () => {
+  standaloneReady = true;
+  checkStart();
+};
+
+workspaceFrame.onload = () => {
+  workspaceReady = true;
+  checkStart();
+};
+
+standaloneFrame.src = "../../Coordinates_graph.html";
+workspaceFrame.src = "../../index.html";
+
+function checkStart() {
+  if (standaloneReady && workspaceReady) {
+    runSuite();
+  }
+}
+
+function runSuite() {
+  let passed = 0;
+  let failed = 0;
+
+  function assert(condition, testName, detail) {
+    if (condition) {
+      log('  [PASS] ' + testName + (detail ? ' (' + detail + ')' : ''));
+      passed++;
+    } else {
+      log('  [FAIL] ' + testName + (detail ? ' (' + detail + ')' : ''));
+      failed++;
+    }
+  }
+
+  try {
+    /* ==========================================================================
+       PART 1: STANDALONE Coordinates_graph.html FIDELITY
+       ========================================================================== */
+    log('\n=== PART 1: STANDALONE Coordinates_graph.html TESTS ===');
+    const sWin = standaloneFrame.contentWindow;
+    const sDoc = standaloneFrame.contentDocument;
+
+    assert(!!sWin.MathForgeCoordinates, 'MathForgeCoordinates namespace exposed on standalone window');
+    assert(typeof sWin.MathForgeCoordinates.initStandalone === 'function', 'initStandalone is a function');
+
+    const sCanvas = sDoc.getElementById('canvas');
+    assert(!!sCanvas, 'Standalone canvas element exists');
+    assert(sCanvas.width === 900 && sCanvas.height === 700, 'Standalone canvas initialized to 900x700', sCanvas.width + 'x' + sCanvas.height);
+
+    const sPointsInput = sDoc.getElementById('pointsInput');
+    assert(!!sPointsInput, 'Standalone pointsInput textarea exists');
+    assert(sPointsInput.value.includes('P(1,-1)'), 'Initial sample points present in pointsInput', sPointsInput.value.trim().replace(/\n/g, '; '));
+
+    const sViewZoom = sDoc.getElementById('viewZoom');
+    const sViewZoomVal = sDoc.getElementById('viewZoomVal');
+    const sResetViewBtn = sDoc.getElementById('resetViewBtn');
+    assert(!!sViewZoom && !!sResetViewBtn, 'Standalone zoom and reset view controls exist');
+    assert(sViewZoom.value === '1.0' || sViewZoom.value === '1', 'Initial standalone zoom is 1.0', sViewZoom.value);
+
+    // Test Zoom change
+    sViewZoom.value = '2.0';
+    sViewZoom.dispatchEvent(new sWin.Event('input', { bubbles: true }));
+    assert(sViewZoomVal.textContent === '200%', 'Standalone zoom value label updates on input', sViewZoomVal.textContent);
+
+    // Test Reset View
+    sResetViewBtn.click();
+    assert(sViewZoom.value === '1.0' || sViewZoom.value === '1', 'Reset View restores zoom to 1.0', sViewZoom.value);
+    assert(sViewZoomVal.textContent === '100%', 'Reset View restores zoom label to 100%', sViewZoomVal.textContent);
+
+    // Test Mouse Pan on standalone canvas
+    const rect = sCanvas.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    sCanvas.dispatchEvent(new sWin.MouseEvent('mousedown', { bubbles: true, clientX: cx, clientY: cy }));
+    sWin.dispatchEvent(new sWin.MouseEvent('mousemove', { bubbles: true, clientX: cx + 50, clientY: cy + 30 }));
+    sWin.dispatchEvent(new sWin.MouseEvent('mouseup', { bubbles: true, clientX: cx + 50, clientY: cy + 30 }));
+    assert(true, 'Canvas panning mouse event sequence executed without error');
+
+    // Test Add Set button
+    const sAddSetBtn = sDoc.getElementById('addSetBtn');
+    const sSetList = sDoc.getElementById('setList');
+    const initialSetCount = sSetList.children.length;
+    sAddSetBtn.click();
+    assert(sSetList.children.length === initialSetCount + 1, 'Add set button adds a new set to setList', initialSetCount + ' -> ' + sSetList.children.length);
+
+    // Test Download button wiring
+    const sDownloadBtn = sDoc.getElementById('downloadBtn');
+    assert(!!sDownloadBtn, 'Download PNG button exists on standalone page');
+
+    /* ==========================================================================
+       PART 2: WORKSPACE index.html INTEGRATION
+       ========================================================================== */
+    log('\n=== PART 2: WORKSPACE index.html INTEGRATION TESTS ===');
+    const wWin = workspaceFrame.contentWindow;
+    const wDoc = workspaceFrame.contentDocument;
+
+    assert(!!wWin.MathForgeWorkspace, 'MathForgeWorkspace namespace exists on workspace window');
+    assert(!!wWin.MathForgeCoordinates, 'MathForgeCoordinates namespace exists on workspace window');
+
+    const coordTool = wWin.MathForgeWorkspace.getTool('coordinates-graph');
+    assert(!!coordTool, 'Coordinates Graph tool is registered in MathForgeWorkspace');
+    assert(coordTool.name === 'Coordinates Graph', 'Tool registered with correct name', coordTool.name);
+
+    // Check workspace initial state
+    const mountContainer = wDoc.getElementById('mfToolMountContainer');
+    const leftPanel = wDoc.getElementById('mfLeftPanel');
+    const propertiesContainer = wDoc.getElementById('mfPropertiesContainer');
+    const statusTool = wDoc.getElementById('mfStatusActiveTool');
+
+    assert(wWin.MathForgeWorkspace.getActiveTool() === null, 'Initial active tool is null (Overview)');
+    assert(statusTool.textContent.includes('None'), 'Initial status bar shows None (Overview)', statusTool.textContent);
+
+    // Check toolbar buttons initially disabled
+    const tbReset = wDoc.getElementById('mfResetViewToolbarBtn');
+    const tbZoomIn = wDoc.getElementById('mfZoomInBtn');
+    const tbZoomOut = wDoc.getElementById('mfZoomOutBtn');
+    const tbExport = wDoc.getElementById('mfExportPngBtn');
+    assert(tbReset.hasAttribute('disabled'), 'Toolbar Reset View button is initially disabled');
+    assert(tbZoomIn.hasAttribute('disabled'), 'Toolbar Zoom In button is initially disabled');
+    assert(tbZoomOut.hasAttribute('disabled'), 'Toolbar Zoom Out button is initially disabled');
+    assert(tbExport.hasAttribute('disabled'), 'Toolbar Export button is initially disabled');
+
+    // Select Coordinates Graph tool
+    log('\n--- MOUNTING COORDINATES GRAPH IN WORKSPACE ---');
+    const selectRes = wWin.MathForgeWorkspace.selectTool('coordinates-graph');
+    assert(selectRes === true, 'selectTool("coordinates-graph") returns true');
+    assert(wWin.MathForgeWorkspace.getState().activeTool === 'coordinates-graph', 'getState().activeTool returns "coordinates-graph"');
+    assert(statusTool.textContent.includes('Coordinates Graph'), 'Status bar updates to "Coordinates Graph"', statusTool.textContent);
+
+    // Verify DOM mounting
+    const mountedCanvas = mountContainer.querySelector('.mf-coord-canvas');
+    assert(!!mountedCanvas, 'Canvas mounted inside #mfToolMountContainer with class .mf-coord-canvas');
+    assert(mountedCanvas.width > 0 && mountedCanvas.height > 0, 'Mounted canvas has physical dimensions > 0', mountedCanvas.width + 'x' + mountedCanvas.height);
+
+    const injectedInputs = leftPanel.querySelector('#mfCoordToolInputs');
+    assert(!!injectedInputs, 'Inputs container #mfCoordToolInputs injected into #mfLeftPanel');
+
+    const pointsTextarea = injectedInputs.querySelector('#mfCoordPointsInput');
+    assert(!!pointsTextarea, '#mfCoordPointsInput textarea exists in left panel');
+    assert(pointsTextarea.value.includes('P(1,-1)'), 'Initial sample points displayed in workspace textarea', pointsTextarea.value.trim().replace(/\n/g, '; '));
+
+    const injectedProps = propertiesContainer.querySelector('.mf-coord-properties');
+    assert(!!injectedProps, 'Properties container .mf-coord-properties injected into #mfPropertiesContainer');
+
+    // Verify toolbar buttons enabled
+    assert(!tbReset.hasAttribute('disabled'), 'Toolbar Reset View button is enabled after mount');
+    assert(!tbZoomIn.hasAttribute('disabled'), 'Toolbar Zoom In button is enabled after mount');
+    assert(!tbZoomOut.hasAttribute('disabled'), 'Toolbar Zoom Out button is enabled after mount');
+    assert(!tbExport.hasAttribute('disabled'), 'Toolbar Export button is enabled after mount');
+
+    // Verify Zoom In / Out / Reset on workspace toolbar
+    const zoomStatus = wDoc.getElementById('mfStatusZoom');
+    tbZoomIn.click();
+    assert(zoomStatus.textContent !== '100%', 'Toolbar Zoom In updates zoom status readout', zoomStatus.textContent);
+
+    tbReset.click();
+    assert(zoomStatus.textContent === '100%', 'Toolbar Reset View restores zoom status readout to 100%', zoomStatus.textContent);
+
+    // Verify export() adapter API
+    const adapter = wWin.MathForgeCoordinates.adapter;
+    const exportedDataUrl = adapter.export('png');
+    assert(typeof exportedDataUrl === 'string' && exportedDataUrl.startsWith('data:image/png;base64,'), 'adapter.export("png") returns valid PNG data URL');
+
+    // Verify State Mutation & Persistence
+    log('\n--- TESTING STATE PERSISTENCE & UNMOUNT/REMOUNT ---');
+    pointsTextarea.value = "Alpha(0,0)\nBeta(2,4)\nGamma(5,1)\nDelta(1,-3)";
+    pointsTextarea.dispatchEvent(new wWin.Event('input', { bubbles: true }));
+
+    const capturedState = adapter.getState();
+    assert(capturedState.pointSets[0].inputText.includes('Alpha(0,0)'), 'getState() reflects updated point coordinates');
+
+    // Unmount by returning to Overview
+    const unmountRes = wWin.MathForgeWorkspace.selectTool(null);
+    assert(unmountRes === true, 'selectTool(null) successfully returns to Overview');
+    assert(wWin.MathForgeWorkspace.getState().activeTool === null, 'Active tool is now null');
+    assert(mountContainer.children.length === 0, '#mfToolMountContainer is completely cleaned up', mountContainer.children.length + ' children');
+    assert(!leftPanel.querySelector('#mfCoordToolInputs'), '#mfCoordToolInputs is removed from #mfLeftPanel');
+    assert(!propertiesContainer.querySelector('.mf-coord-properties') && !!propertiesContainer.querySelector('.mf-property-placeholder'), '#mfPropertiesContainer has placeholder restored after unmount');
+    assert(tbReset.hasAttribute('disabled'), 'Toolbar Reset View button is disabled after unmount');
+    assert(tbExport.hasAttribute('disabled'), 'Toolbar Export button is disabled after unmount');
+
+    // Remount Coordinates Graph and verify restored state
+    const remountRes = wWin.MathForgeWorkspace.selectTool('coordinates-graph');
+    assert(remountRes === true, 'selectTool("coordinates-graph") remounts successfully');
+    const remountedInputs = leftPanel.querySelector('#mfCoordToolInputs');
+    const remountedTextarea = remountedInputs.querySelector('#mfCoordPointsInput');
+    assert(remountedTextarea.value.includes('Alpha(0,0)'), 'Remounted tool preserved previous state and restored textarea', remountedTextarea.value.trim().replace(/\n/g, '; '));
+
+    // Verify label dragging does NOT alter point coordinates or textarea
+    log('\n--- TESTING LABEL DRAG VS POINT PRESERVATION ---');
+    const remountedCanvas = mountContainer.querySelector('.mf-coord-canvas');
+    const rRect = remountedCanvas.getBoundingClientRect();
+    const beforeText = remountedTextarea.value;
+
+    // Simulate drag across canvas
+    remountedCanvas.dispatchEvent(new wWin.MouseEvent('mousedown', { bubbles: true, clientX: rRect.left + 50, clientY: rRect.top + 50 }));
+    wWin.dispatchEvent(new wWin.MouseEvent('mousemove', { bubbles: true, clientX: rRect.left + 120, clientY: rRect.top + 90 }));
+    wWin.dispatchEvent(new wWin.MouseEvent('mouseup', { bubbles: true, clientX: rRect.left + 120, clientY: rRect.top + 90 }));
+
+    assert(remountedTextarea.value === beforeText, 'Canvas interactions preserve point coordinates and textarea without alteration');
+
+    // Final summary
+    log('\n======================================================');
+    log('SUMMARY: ' + passed + ' assertions passed, ' + failed + ' failed.');
+    log('======================================================');
+
+    const resEl = document.getElementById('results');
+    if (failed === 0) {
+      resEl.textContent = 'ALL_TESTS_PASSED (' + passed + ' assertions)';
+    } else {
+      resEl.textContent = 'TESTS_FAILED (' + failed + ' failures, ' + passed + ' passed)';
+    }
+  } catch (err) {
+    log('\nUNEXPECTED SUITE ERROR: ' + err.stack);
+    document.getElementById('results').textContent = 'SUITE_ERROR: ' + err.message;
+  }
+}
+</script>
+</body>
+</html>

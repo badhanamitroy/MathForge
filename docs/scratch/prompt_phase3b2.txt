@@ -1,0 +1,162 @@
+<USER_REQUEST>
+# MathForge — Phase 3B.2: Canvas Auto-Fit & True Reset View Correction
+
+## Current Status
+
+Phase 3B.1 automated tests reportedly passed, but user manual verification has identified two remaining failures.
+
+**Phase 3B.1 is NOT APPROVED. Phase 4 is NOT authorized.**
+
+User's actual Chrome screenshot shows:
+1. The graph does not properly utilize the available central canvas area.
+2. Clicking Reset View only zooms out; it does not restore the original graph framing.
+
+Use the actual screenshot and current source code as evidence. Do not assume the previous implementation report is correct.
+
+## Task 1 — Forensic Investigation of Canvas Auto-Fit
+
+Inspect:
+- `assets/js/tools/coordinates-tool.js`
+- `assets/css/tools/coordinates-tool.css`
+- `assets/css/workspace.css`
+- `assets/js/workspace-core.js`
+- `index.html`
+- Original baseline: `backups/phase3_pre_integration/Coordinates_graph.html`
+
+Identify why the graph remains relatively small inside the central canvas despite the canvas backing buffer being resized.
+
+Investigate:
+- `computeBounds()`
+- `makeTransform()`
+- `fitCanvasToContainer()`
+- Initial zoom and pan offsets
+- Canvas logical dimensions versus physical dimensions
+- CSS width/height and aspect-ratio constraints
+- Coordinate range and padding calculations
+- Initial mount and resize lifecycle
+
+### Required behavior
+
+1. The graph must use the available central canvas area intelligently.
+2. Maintain equal X/Y scale. Never distort mathematical geometry.
+3. Keep axes, origin, points, labels, and grid visible.
+4. Use sensible margins so labels are not clipped.
+5. Adapt to the actual available canvas dimensions.
+6. Do not force a fixed zoom value that only works at one viewport.
+7. Do not overwrite a user's manually adjusted zoom/pan every time the container resizes.
+8. Preserve high-DPI sharpness.
+9. Verify at different workspace sizes and browser viewport dimensions.
+
+Do not simply enlarge the canvas element with CSS. Correct the graph's mathematical transform and initial framing.
+
+## Task 2 — Implement a Genuine Reset View
+
+Trace the complete Reset View button event path from the workspace toolbar to the coordinates adapter and engine.
+
+Find out why the current behavior only zooms out.
+
+### Required behavior
+
+Reset View must restore the graph's initial fitted view:
+- Restore the initial fit zoom.
+- Restore initial horizontal and vertical pan offsets.
+- Restore the initial graph framing and origin position.
+- Re-render the complete graph.
+
+Reset View must NOT:
+- Delete points or point sets.
+- Modify coordinate values.
+- Change point styles or marker shapes.
+- Reset label offsets.
+- Change polygon/diagonal settings.
+- Clear textarea input.
+- Rebuild or destroy the active tool unnecessarily.
+
+The initial fitted view should be calculated from the current container dimensions and graph bounds. Store or recalculate the appropriate initial-view state so Reset View works correctly after resizing.
+
+Make sure the Reset View button invokes the dedicated reset operation, not the Zoom Out handler.
+
+## Task 3 — Regression Protection
+
+Create:
+
+`docs/scratch/test_phase3_coordinates_autofit_reset.js`
+
+The tests must verify actual behavior, not merely the existence of functions or non-zero canvas dimensions.
+
+Required scenarios:
+
+1. Graph uses the available central canvas area within a reasonable margin.
+2. X/Y scale remains equal.
+3. Graph and labels remain inside visible canvas boundaries.
+4. Initial fit works on first mount.
+5. Initial fit works after container resize.
+6. Manual zoom and pan work after initial fit.
+7. Reset restores the original fitted framing.
+8. Reset works after multiple zoom-in/zoom-out operations.
+9. Reset works after horizontal and vertical panning.
+10. Reset works after workspace resize.
+11. Reset preserves point coordinates and textarea content.
+12. Reset preserves point sets and active set.
+13. Reset preserves label offsets.
+14. Reset preserves marker colors and shapes.
+15. Reset preserves polygon and diagonal settings.
+16. No console errors or duplicate event handlers.
+17. Standalone `Coordinates_graph.html` still works.
+18. `file://` offline mode still works.
+
+Use actual visual/pixel or computed-transform comparisons where appropriate. A test that only checks `canvas.width > 0` is insufficient.
+
+Do not weaken, delete, or bypass existing assertions to make the suite pass.
+
+## Task 4 — Full Regression
+
+Run:
+- New auto-fit/reset test suite.
+- Phase 3B.1 manual failure suite.
+- Phase 3 integration suite.
+- Phase 2 lifecycle suite.
+- Phase 2 workspace/accessibility suite.
+- Phase 2 edge-case/DPR suite.
+- Phase 2 viewport suite.
+- Standalone Coordinates Graph browser tests.
+
+Investigate and fix genuine regressions rather than changing expected results.
+
+## Task 5 — Documentation
+
+Create:
+
+`docs/PHASE_3B_2_CANVAS_AUTOFIT_RESET_REPORT.md`
+
+Update:
+- `docs/PHASE_3_COORDINATES_GRAPH_INTEGRATION_REPORT.md`
+- `docs/PROJECT_STATUS.md`
+- `docs/PROJECT_CHANGELOG.md`
+
+Include:
+- Exact root causes.
+- Files changed.
+- Before/after canvas dimensions and graph transform measurements.
+- Reset behavior before/after.
+- Test commands and actual results.
+- Remaining limitations.
+- Confirmation that Phase 4 remains on hold.
+
+## Strict Restrictions
+
+- Do not start Equation Plotter integration.
+- Do not modify Ogive or Polygonal tools.
+- Do not rewrite the entire workspace.
+- Preserve standalone tool functionality.
+- Preserve offline `file://` compatibility.
+- Do not claim user manual verification passed.
+- Do not mark Phase 3 approved.
+- Do not modify unrelated features.
+- Keep a backup before risky source changes.
+
+At the end, provide a concise implementation report and explicit manual testing instructions. Wait for user verification before proceeding.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-11-03T00:24:11+06:00.
+</ADDITIONAL_METADATA>

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<iframe id="appFrame" src="../../Coordinates_graph.html" width="1000" height="800"></iframe>
+<pre id="log"></pre>
+<script>
+const log = document.getElementById('log');
+const frame = document.getElementById('appFrame');
+frame.onload = () => {
+  try {
+    const doc = frame.contentDocument || frame.contentWindow.document;
+    const polygonVisible = doc.getElementById('polygonVisible');
+    const polygonFillVisible = doc.getElementById('polygonFillVisible');
+    const showDiagonals = doc.getElementById('showDiagonals');
+    const drawBtn = doc.getElementById('drawBtn');
+    const canvas = doc.getElementById('canvas');
+    log.textContent = `IFRAME ACCESS SUCCESS!
+polygonVisible: ${!!polygonVisible} (checked=${polygonVisible?.checked})
+polygonFillVisible: ${!!polygonFillVisible} (checked=${polygonFillVisible?.checked})
+showDiagonals: ${!!showDiagonals} (checked=${showDiagonals?.checked})
+drawBtn: ${!!drawBtn}
+canvas: ${!!canvas} (width=${canvas?.width}, height=${canvas?.height})`;
+  } catch(e) {
+    log.textContent = `IFRAME ACCESS ERROR: ${e.message}`;
+  }
+};
+</script>
+</body>
+</html>
