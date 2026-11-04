@@ -1,0 +1,428 @@
+<!-- Coordinates Graph -->
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MathForge — Coordinates Graph</title>
+
+  <link rel="stylesheet" href="assets/css/common.css">
+  <link rel="stylesheet" href="assets/css/tools/coordinates-tool.css">
+  <script src="assets/js/core/graph-typography.js"></script>
+  <script src="assets/js/common.js"></script>
+
+  <style>
+    :root {
+      --bg-900:#070d18;
+      --bg-800:#0d1628;
+      --panel: rgba(16,25,42,0.96);
+      --text:#edf5ff;
+      --muted:#bfd3f8;
+      --stroke: rgba(148, 163, 184, 0.24);
+      --card: rgba(17,26,51,0.96);
+    }
+    body{
+      margin:0;
+      font-family:Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(81,132,255,0.15), transparent 24%),
+        linear-gradient(180deg, var(--bg-900), var(--bg-800));
+      color:var(--text);
+      display:grid; place-items:center; min-height:100vh;
+      line-height:1.5;
+    }
+    .wrap{
+      width:min(1280px,96vw);
+      display:grid;
+      grid-template-columns: 420px 1fr;
+      gap:18px;
+      align-items:start;
+    }
+    .card{
+      background:linear-gradient(180deg, rgba(18,30,49,0.96), rgba(13,22,37,0.96));
+      border:1px solid var(--stroke);
+      border-radius:18px;
+      box-shadow:0 18px 42px rgba(1,5,12,0.38);
+      overflow:hidden;
+    }
+    .card h2{
+      margin:0; padding:15px 18px;
+      font-size:1rem;
+      border-bottom:1px solid var(--stroke);
+      background:rgba(255,255,255,0.02);
+    }
+    .body{ padding:16px 18px 18px; }
+    textarea, input[type="number"]{
+      width:100%;
+      box-sizing:border-box;
+      background:rgba(10,17,29,0.7);
+      border:1px solid var(--stroke);
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 12px;
+      outline:none;
+      font-size:14px;
+      transition:border-color .15s ease, box-shadow .15s ease;
+    }
+    textarea{ min-height:110px; resize:vertical; }
+    textarea:focus, input:focus, select:focus { border-color: rgba(127,181,255,0.8); box-shadow:0 0 0 3px rgba(91, 142, 255, 0.18); }
+    .row{ display:flex; gap:12px; align-items:center; margin-top:12px; }
+    .row label{ flex:1; color:var(--muted); font-size:13px; }
+    .row input[type="range"]{ width:190px; }
+    .row .val{ width:60px; text-align:right; color:var(--text); font-size:13px; opacity:.9; }
+    .btns{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+    button{
+      border:1px solid var(--stroke);
+      background:linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:700;
+      transition:transform .12s ease, border-color .12s ease, background .12s ease;
+    }
+    button:hover{ background:linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06)); border-color: rgba(148,163,184,0.35); }
+    button:active{ transform:translateY(1px); }
+    button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, canvas:focus-visible { outline:3px solid rgba(128,196,255,0.7); outline-offset:2px; }
+    .hint{ margin-top:10px; color:var(--muted); font-size:13px; line-height:1.45; }
+    .canvasWrap{ padding:12px; }
+    canvas{
+      width:100%; height:auto; display:block;
+      background:#fff;
+      border-radius:14px;
+      border:1px solid rgba(15,23,41,0.1);
+      cursor: default;
+    }
+    canvas.dragging{ cursor: grabbing; }
+    canvas.can-drag{ cursor: grab; }
+    .small{ font-size:12px; color:var(--muted); margin-top:8px; }
+    .sectionTitle{
+      margin-top:16px;
+      padding-top:12px;
+      border-top:1px solid rgba(255,255,255,0.08);
+      color:#d9e8ff;
+      font-size:13px;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      font-weight:700;
+    }
+    .pointControls{
+      margin-top:10px;
+      display:grid;
+      gap:10px;
+    }
+    .pointCard{
+      border:1px solid rgba(255,255,255,0.10);
+      border-radius:12px;
+      padding:10px;
+      background:rgba(0,0,0,0.18);
+    }
+    .pointCardHeader{
+      display:flex; justify-content:space-between; align-items:center;
+      color:#d9e8ff; font-size:13px; margin-bottom:6px;
+    }
+    .setManager{
+      margin-top:12px;
+      border:1px solid rgba(255,255,255,0.10);
+      border-radius:12px;
+      background:rgba(0,0,0,0.18);
+      padding:12px;
+    }
+    .setManagerHeader{
+      display:flex; justify-content:space-between; align-items:center; gap:8px;
+      margin-bottom:8px;
+    }
+    .setList{
+      display:grid; gap:8px;
+    }
+    .setItem{
+      display:grid; gap:8px; padding:8px; border:1px solid rgba(255,255,255,0.08); border-radius:10px; background:rgba(255,255,255,0.02);
+    }
+    .setItem.active{ border-color: rgba(127,181,255,0.7); background: rgba(127,181,255,0.08); }
+    .setItemRow{ display:flex; align-items:center; gap:8px; }
+    .setNameInput{
+      flex:1; min-width:0; background:rgba(10,17,29,0.7); border:1px solid var(--stroke); color:var(--text); border-radius:8px; padding:8px 10px;
+    }
+    .setItemActions{ display:flex; gap:6px; }
+    .setBtn{ padding:7px 10px; font-size:12px; }
+    .setFieldRow{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:8px;
+      margin-top:8px;
+    }
+    .setSummary{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:12px;
+    }
+    .miniRow{
+      display:flex; gap:10px; align-items:center; margin-top:8px;
+    }
+    .miniRow label{ flex:1; color:var(--muted); font-size:12px; }
+    .miniRow input[type="range"]{ width: 190px; }
+    .miniRow .val{ width:60px; text-align:right; font-size:12px; opacity:.9; }
+    .styleRow{
+      display:grid;
+      grid-template-columns: 78px 1fr;
+      gap:8px;
+      align-items:center;
+      margin-top:10px;
+      color:var(--muted);
+      font-size:12px;
+    }
+    .styleRow input[type="color"]{
+      width:44px; height:32px; border-radius:8px; border:1px solid var(--stroke); background:rgba(10,17,29,0.7); padding:2px;
+    }
+    .styleRow select{
+      width:100%; box-sizing:border-box; background:rgba(10,17,29,0.7); border:1px solid var(--stroke); color:var(--text); border-radius:8px; padding:8px 10px; font-size:12px;
+    }
+    @media (max-width: 760px){
+      .wrap{ grid-template-columns: 1fr; }
+      .body{ padding:14px; }
+      .miniRow{ display:grid; grid-template-columns: 1fr; gap:6px; }
+      .miniRow input[type="range"]{ width:100%; }
+      .row{ display:grid; gap:8px; }
+      .row .val{ width:auto; text-align:left; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="topbar">
+    <div class="topbarInner">
+      <div class="brand">
+        MathForge
+        <span>Coordinates -> Graph plotting</span>
+      </div>
+      <div>
+        <button class="good" onclick="location.href='index.html'">← Back</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div class="wrap">
+    <div class="card">
+      <h2>Inputs + Controls</h2>
+      <div class="body">
+        <div class="setManager">
+          <div class="setManagerHeader">
+            <div class="sectionTitle" style="margin:0; padding:0; border:0;">Point sets</div>
+            <button id="addSetBtn" class="setBtn" type="button">Add set</button>
+          </div>
+          <div id="setList" class="setList"></div>
+        </div>
+
+        <textarea id="pointsInput"></textarea>
+
+        <div class="row">
+          <label>Margin (units)</label>
+          <input id="marginUnits" type="number" value="2" min="0" step="1" />
+        </div>
+
+        <div class="sectionTitle">Polygon controls (active set)</div>
+        <div class="row">
+          <label><input id="polygonVisible" type="checkbox" checked /> Show polygon</label>
+        </div>
+        <div class="row">
+          <label><input id="polygonFillVisible" type="checkbox" checked /> Show fill</label>
+        </div>
+        <div class="styleRow">
+          <span>Fill color</span>
+          <input id="polygonFillColor" type="color" value="#5b8def" />
+        </div>
+        <div class="row">
+          <label>Fill opacity</label>
+          <input id="polygonFillOpacity" type="range" min="0" max="100" value="18" />
+          <div class="val" id="polygonFillOpacityVal">18%</div>
+        </div>
+        <div class="row">
+          <label><input id="polygonBorderVisible" type="checkbox" checked /> Show border</label>
+        </div>
+        <div class="styleRow">
+          <span>Border color</span>
+          <input id="polygonBorderColor" type="color" value="#111827" />
+        </div>
+        <div class="row">
+          <label>Border width</label>
+          <input id="polygonBorderWidth" type="range" min="1" max="12" value="3" />
+          <div class="val" id="polygonBorderWidthVal">3</div>
+        </div>
+
+        <div class="sectionTitle">Diagonal controls (active set)</div>
+        <div class="row">
+          <label><input id="showDiagonals" type="checkbox" /> Show diagonals</label>
+        </div>
+        <div class="styleRow">
+          <span>Color</span>
+          <input id="diagonalColor" type="color" value="#475569" />
+        </div>
+        <div class="row">
+          <label>Width</label>
+          <input id="diagonalWidth" type="range" min="1" max="10" value="2" />
+          <div class="val" id="diagonalWidthVal">2</div>
+        </div>
+        <div class="row">
+          <label>Style</label>
+          <select id="diagonalStyle">
+            <option value="solid">Solid</option>
+            <option value="dashed" selected>Dashed</option>
+            <option value="dotted">Dotted</option>
+          </select>
+        </div>
+
+        <div class="sectionTitle">View & Canvas background</div>
+        <div class="row">
+          <label>Zoom</label>
+          <input id="viewZoom" type="range" min="0.4" max="3.0" value="1.0" step="0.05" />
+          <div class="val" id="viewZoomVal">100%</div>
+        </div>
+        <div class="row">
+          <label>Background color</label>
+          <input id="canvasBgColor" type="color" value="#ffffff" />
+        </div>
+        <div class="btns" style="margin-top:6px;">
+          <button id="resetViewBtn" type="button">Reset View</button>
+          <button id="resetBgBtn" type="button">Default Background</button>
+        </div>
+
+        <div class="sectionTitle">Grid controls</div>
+        <div class="row">
+          <label><input id="gridVisible" type="checkbox" checked /> Show grid lines</label>
+        </div>
+        <div class="row">
+          <label>Grid line color</label>
+          <input id="gridColor" type="color" value="#000000" />
+        </div>
+        <div class="row">
+          <label>Grid opacity</label>
+          <input id="gridOpacity" type="range" min="0" max="100" value="15" />
+          <div class="val" id="gridOpacityVal">15%</div>
+        </div>
+
+        <div class="sectionTitle">Axis controls</div>
+        <div class="row">
+          <label><input id="xAxisVisible" type="checkbox" checked /> Show X-axis</label>
+        </div>
+        <div class="row">
+          <label><input id="yAxisVisible" type="checkbox" checked /> Show Y-axis</label>
+        </div>
+        <div class="row">
+          <label>Axis color</label>
+          <input id="axisColor" type="color" value="#000000" />
+        </div>
+        <div class="row">
+          <label>Axis line width</label>
+          <input id="axisWidth" type="range" min="1" max="8" value="2" />
+          <div class="val" id="axisWidthVal">2</div>
+        </div>
+        <div class="row">
+          <label><input id="axisLabelsVisible" type="checkbox" checked /> Show axis & tick numbers</label>
+        </div>
+
+        <div class="sectionTitle">Coordinate label controls</div>
+        <div class="row">
+          <label><input id="showLabels" type="checkbox" checked /> Show point labels</label>
+        </div>
+        <div class="row">
+          <label>Coordinate precision</label>
+          <select id="coordPrecision">
+            <option value="auto" selected>Auto (keep fractions/raw)</option>
+            <option value="0">0 decimals (Integer)</option>
+            <option value="1">1 decimal</option>
+            <option value="2">2 decimals</option>
+            <option value="3">3 decimals</option>
+          </select>
+        </div>
+
+        <div class="btns">
+          <button id="drawBtn">Draw</button>
+          <button id="resetBtn">Reset Sample</button>
+          <button id="downloadBtn">Download PNG</button>
+        </div>
+
+        <div class="sectionTitle">Font sizes</div>
+        <div class="row">
+          <label>Axis label (X,Y)</label>
+          <input id="fontAxis" type="range" min="12" max="44" value="20" />
+          <div class="val" id="fontAxisVal"></div>
+        </div>
+        <div class="row">
+          <label>Tick numbers</label>
+          <input id="fontTicks" type="range" min="10" max="34" value="16" />
+          <div class="val" id="fontTicksVal"></div>
+        </div>
+        <div class="row">
+          <label>Point labels</label>
+          <input id="fontPoint" type="range" min="10" max="34" value="17" />
+          <div class="val" id="fontPointVal"></div>
+        </div>
+
+        <div class="sectionTitle">Minor ticks (thickness + length)</div>
+        <div class="row">
+          <label>Minor tick thickness</label>
+          <input id="minorTickWidth" type="range" min="1" max="6" value="2" />
+          <div class="val" id="minorTickWidthVal"></div>
+        </div>
+        <div class="row">
+          <label>Minor tick length</label>
+          <input id="minorTickLen" type="range" min="4" max="18" value="8" />
+          <div class="val" id="minorTickLenVal"></div>
+        </div>
+
+        <div class="sectionTitle">Reposition axis numbers (ticks)</div>
+        <div class="row">
+          <label>X-axis tick offset X (px)</label>
+          <input id="xTickDX" type="range" min="-60" max="60" value="0" />
+          <div class="val" id="xTickDXVal"></div>
+        </div>
+        <div class="row">
+          <label>X-axis tick offset Y (px)</label>
+          <input id="xTickDY" type="range" min="-80" max="140" value="28" />
+          <div class="val" id="xTickDYVal"></div>
+        </div>
+
+        <div class="row">
+          <label>Y-axis tick offset X (px)</label>
+          <input id="yTickDX" type="range" min="-160" max="100" value="-20" />
+          <div class="val" id="yTickDXVal"></div>
+        </div>
+        <div class="row">
+          <label>Y-axis tick offset Y (px)</label>
+          <input id="yTickDY" type="range" min="-60" max="60" value="0" />
+          <div class="val" id="yTickDYVal"></div>
+        </div>
+
+        <div class="sectionTitle">Origin label (O) offsets</div>
+        <div class="row">
+          <label>O offset X (px)</label>
+          <input id="oDX" type="range" min="-60" max="160" value="16" />
+          <div class="val" id="oDXVal"></div>
+        </div>
+        <div class="row">
+          <label>O offset Y (px)</label>
+          <input id="oDY" type="range" min="-60" max="160" value="18" />
+          <div class="val" id="oDYVal"></div>
+        </div>
+
+        <div class="sectionTitle">Per-point label offsets (drag OR sliders)</div>
+        <div class="hint">Hover a label → grab → drag. Fractions stay as fractions in labels.</div>
+        <div id="pointControls" class="pointControls"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>XY Graph</h2>
+      <div class="canvasWrap">
+        <canvas id="canvas" width="900" height="700"></canvas>
+        <div class="small">Axes are always shown for any point values.</div>
+      </div>
+    </div>
+  </div>
+
+<script src="assets/js/tools/coordinates-tool.js"></script>
+<script>
+  window.MathForgeCoordinates.initStandalone(document);
+</script>
+</body>
+</html>

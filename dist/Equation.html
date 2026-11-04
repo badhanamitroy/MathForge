@@ -1,0 +1,300 @@
+<!-- Equation Plotter -->
+ 
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MathForge — Equation Plotter</title>
+    <link rel="stylesheet" href="assets/css/common.css">
+  <script src="assets/js/core/graph-typography.js"></script>
+  <script src="assets/js/common.js"></script>
+  <style>
+    :root{
+      --bg-900:#070d18;
+      --bg-800:#0d1628;
+      --panel: rgba(16,25,42,0.96);
+      --text:#edf5ff;
+      --muted:#bfd3f8;
+      --stroke: rgba(148,163,184,0.24);
+      --card: rgba(17,26,51,0.96);
+    }
+    body{
+      margin:0;
+      font-family:Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(81,132,255,0.15), transparent 24%),
+        linear-gradient(180deg, var(--bg-900), var(--bg-800));
+      color:var(--text);
+      display:grid;
+      place-items:center;
+      min-height:100vh;
+      line-height:1.5;
+    }
+    .wrap{
+      width:min(1280px,96vw);
+      display:grid;
+      grid-template-columns: 440px 1fr;
+      gap:18px;
+      align-items:start;
+      padding:18px 0;
+    }
+    .card{
+      background:linear-gradient(180deg, rgba(18,30,49,0.96), rgba(13,22,37,0.96));
+      border:1px solid var(--stroke);
+      border-radius:18px;
+      box-shadow:0 18px 42px rgba(1,5,12,0.38);
+      overflow:hidden;
+    }
+    .card h2{
+      margin:0;
+      padding:15px 18px;
+      font-size:1rem;
+      border-bottom:1px solid var(--stroke);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      background:rgba(255,255,255,0.02);
+    }
+    .body{ padding:16px 18px 18px; }
+
+    textarea, input, select{
+      width:100%;
+      box-sizing:border-box;
+      background:rgba(10,17,29,0.7);
+      border:1px solid var(--stroke);
+      color:var(--text);
+      border-radius:12px;
+      padding:10px 12px;
+      outline:none;
+      font-size:14px;
+      transition:border-color .15s ease, box-shadow .15s ease;
+    }
+    textarea{ min-height:130px; resize:vertical; }
+    textarea:focus, input:focus, select:focus { border-color: rgba(127,181,255,0.8); box-shadow:0 0 0 3px rgba(91, 142, 255, 0.18); }
+
+    .row{ display:flex; gap:12px; align-items:center; margin-top:12px; }
+    .row label{ flex:1; color:var(--muted); font-size:13px; }
+    .row input[type="range"]{ width:190px; }
+    .row .val{ width:70px; text-align:right; color:var(--text); font-size:13px; opacity:.95; }
+
+    .two{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+    .three{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px; }
+
+    .btns{ display:flex; gap:10px; margin-top:14px; flex-wrap:wrap; }
+    button{
+      border:1px solid var(--stroke);
+      background:linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.04));
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:700;
+      transition:transform .12s ease, border-color .12s ease, background .12s ease;
+    }
+    button:hover{ background:linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06)); border-color: rgba(148,163,184,0.35); }
+    button:active{ transform:translateY(1px); }
+    button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, canvas:focus-visible { outline:3px solid rgba(128,196,255,0.7); outline-offset:2px; }
+
+    .hint{
+      margin-top:10px;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.45;
+    }
+    .sectionTitle{
+      margin-top:16px;
+      padding-top:12px;
+      border-top:1px solid rgba(255,255,255,0.08);
+      color:#d9e8ff;
+      font-size:13px;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      font-weight:700;
+    }
+
+    .canvasWrap{ padding:12px; }
+    canvas{
+      width:100%;
+      height:auto;
+      display:block;
+      background:#fff;
+      border-radius:14px;
+      border:1px solid rgba(15,23,41,0.1);
+    }
+
+    canvas.can-grab{ cursor: grab; }
+    canvas.grabbing{ cursor: grabbing; }
+    canvas.can-move-point{ cursor: move; }
+    canvas.can-move-label{ cursor: grab; }
+
+    .small{ font-size:12px; color:var(--muted); margin-top:8px; }
+    .pill{
+      font-size:11px;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      color:var(--muted);
+      border:1px solid var(--stroke);
+      padding:6px 10px;
+      border-radius:999px;
+      background:rgba(255,255,255,0.04);
+      white-space:nowrap;
+    }
+    @media (max-width: 760px){
+      .wrap{ grid-template-columns: 1fr; gap:12px; }
+      .body{ padding:14px; }
+      .two, .three, .row{ display:grid; grid-template-columns:1fr; }
+      .row{ gap:8px; }
+      .row .val{ width:auto; text-align:left; }
+      .row input[type="range"]{ width:100%; }
+    }
+  </style>
+</head>
+<body>
+<div class="topbar">
+    <div class="topbarInner">
+      <div class="brand">
+        MathForge
+        <span>Equation curves -> Graph plotting</span>
+      </div>
+      <div>
+        <button class="good" onclick="location.href='index.html'">← Back</button>
+      </div>
+    </div>
+  </div>
+
+<div class="wrap">
+  <div class="card">
+    <h2>
+      Controls
+      <span class="pill">drag • pan • zoom • PNG</span>
+    </h2>
+    <div class="body">
+
+      <div class="sectionTitle">Curve input</div>
+      <div class="row">
+        <label>Curve mode</label>
+        <select id="mode">
+          <option value="function" selected>Function</option>
+          <option value="points">Points (smooth + draggable)</option>
+        </select>
+      </div>
+
+      <label style="margin-top:10px;color:var(--muted);font-size:13px;">Function y = f(x)</label>
+      <input id="fn" value="Math.pow(0.5, x)" />
+      <div class="hint">Examples: <b>Math.pow(0.5, x)</b>, <b>sin(x)</b>, <b>x^2</b>. Only math expressions are accepted.</div>
+      <div id="functionError" class="small" role="alert" style="display:none;color:#ff9b9b;"></div>
+
+      <label style="margin-top:10px;color:var(--muted);font-size:13px;">Points (x,y per line)</label>
+      <textarea id="points">2,0.25
+1,0.5
+0,1
+-1,2
+-2,4
+-3,8
+-4,16
+-5,32</textarea>
+
+      <div class="row">
+        <label><input id="showPoints" type="checkbox" checked /> Show points</label>
+      </div>
+      <div class="row">
+        <label><input id="showLabels" type="checkbox" checked /> Show labels (x,y)</label>
+      </div>
+
+      <div class="sectionTitle">Graph paper scale (ratio)</div>
+      <div class="two">
+        <div>
+          <label style="margin-top:0;color:var(--muted);font-size:13px;">x: small squares per 1 unit</label>
+          <input id="xSmallPerUnit" type="number" value="5" min="1" step="1" />
+        </div>
+        <div>
+          <label style="margin-top:0;color:var(--muted);font-size:13px;">y: small squares per 1 unit</label>
+          <input id="ySmallPerUnit" type="number" value="1" min="1" step="1" />
+        </div>
+      </div>
+
+      <div class="three" style="margin-top:10px;">
+        <div>
+          <label style="margin-top:0;color:var(--muted);font-size:13px;">Minor square (px)</label>
+          <input id="minorPx" type="number" value="10" min="4" step="1" />
+        </div>
+        <div>
+          <label style="margin-top:0;color:var(--muted);font-size:13px;">Major every (minor)</label>
+          <input id="majorEvery" type="number" value="5" min="2" step="1" />
+        </div>
+        <div>
+          <label style="margin-top:0;color:var(--muted);font-size:13px;">Decimals</label>
+          <input id="decimals" type="number" value="2" min="0" max="10" step="1" />
+        </div>
+      </div>
+
+      <div class="sectionTitle">Zoom / Styling</div>
+
+      <div class="row">
+        <label>Zoom (wheel also works)</label>
+        <input id="zoom" type="range" min="0.4" max="3.0" value="1.0" step="0.05" />
+        <div class="val" id="zoomVal"></div>
+      </div>
+
+      <div class="row">
+        <label>Curve thickness</label>
+        <input id="curveWidth" type="range" min="1" max="6" value="3" step="0.1" />
+        <div class="val" id="curveWidthVal"></div>
+      </div>
+
+      <div class="row">
+        <label>Axis label font (X,Y)</label>
+        <input id="axisFont" type="range" min="10" max="28" value="14" />
+        <div class="val" id="axisFontVal"></div>
+      </div>
+      <div class="row">
+        <label>Tick numbers font</label>
+        <input id="tickFont" type="range" min="8" max="22" value="12" />
+        <div class="val" id="tickFontVal"></div>
+      </div>
+      <div class="row">
+        <label>Point label font</label>
+        <input id="labelFont" type="range" min="8" max="22" value="13" />
+        <div class="val" id="labelFontVal"></div>
+      </div>
+
+      <div class="sectionTitle">Canvas</div>
+      <div class="two">
+        <div>
+          <label style="margin-top:0;color:var(--muted);font-size:13px;">Canvas size (w,h)</label>
+          <input id="csize" value="920,560" />
+        </div>
+        <div>
+          <label style="margin-top:0;color:var(--muted);font-size:13px;">Origin (ox,oy)</label>
+          <input id="origin" value="480,300" />
+        </div>
+      </div>
+
+      <div class="btns">
+        <button id="draw">Draw</button>
+        <button id="clearGraph" type="button">Clear Graph</button>
+        <button id="reset">Reset (your sample)</button>
+        <button id="download">Download PNG</button>
+      </div>
+
+      <div class="hint">
+        ✅ <b>Pan:</b> drag empty space • ✅ <b>Move point:</b> drag a point (Points mode) • ✅ <b>Move label:</b> drag a label • ✅ <b>Zoom:</b> mouse wheel
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Graph <span class="pill">single curve line</span></h2>
+    <div class="canvasWrap">
+      <canvas id="cv" width="920" height="560"></canvas>
+      <div class="small">Hover a point/label to see cursor change. Wheel zoom keeps origin centered.</div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/tools/equation-plotter-engine.js"></script>
+
+</body>
+</html>
