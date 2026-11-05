@@ -1,6 +1,6 @@
 "use strict";
 
-var CACHE_NAME = "mathforge-shell-v9";
+var CACHE_NAME = "mathforge-shell-v11";
 var APP_SCOPE = self.registration.scope;
 var SHELL_URL = new URL("index.html", APP_SCOPE).href;
 var OPEN_PROJECT_PATH = new URL("open-project", APP_SCOPE).pathname;
@@ -14,6 +14,7 @@ var APP_ASSETS = [
   "assets/css/common.css",
   "assets/css/workspace.css",
   "assets/css/tools/coordinates-tool.css",
+  "assets/css/tools/equation-plotter-workspace.css",
   "assets/css/tools/pie-chart.css",
   "assets/css/tools/shared-graph-controls.css",
   "assets/js/common.js",
@@ -37,7 +38,7 @@ var APP_ASSETS = [
   "assets/img/MathForge Logo.png",
   "assets/img/pwa-192.png",
   "assets/img/pwa-512.png",
-  "assets/fonts/kalpurush.ttf"
+  "assets/fonts/NotoSansBengali-VF.ttf"
 ];
 
 self.addEventListener("install", function (event) {

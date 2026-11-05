@@ -39,7 +39,7 @@ function mount(options) {
   function graphFont(controlSizePx, defaultSizePx, typography) {
     return graphTypography
       ? graphTypography.font(graphTypography.scaledSizePx(controlSizePx, defaultSizePx, typography), typography)
-      : `${controlSizePx}px "Times New Roman", "Kalpurush", serif`;
+      : `${controlSizePx}px "Times New Roman", "Noto Sans Bengali", serif`;
   }
 
   const valSpans = {
@@ -779,12 +779,20 @@ function mountGeneralWorkspace(options) {
   var sequence = 0;
   var eqPalette = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#be185d", "#4d7c0f"];
   var dragging = null;
+  var hoveredPointId = null;
   var xRateFallback = 5, yRateFallback = 1;
 
   function listen(target, type, handler, listenerOptions) {
     if (!target) return;
     target.addEventListener(type, handler, listenerOptions);
     cleanups.push(function () { target.removeEventListener(type, handler, listenerOptions); });
+  }
+  function updateCanvasInteractionClasses() {
+    if (!cv || !cv.classList) return;
+    var isDragging = Boolean(dragging);
+    cv.classList.toggle("mf-equation-point-interactive", true);
+    cv.classList.toggle("mf-equation-point-hover", !isDragging && hoveredPointId !== null);
+    cv.classList.toggle("mf-equation-canvas-dragging", isDragging);
   }
   function escapeHtml(value) {
     return String(value == null ? "" : value).replace(/[&<>"']/g, function (ch) {
@@ -1027,12 +1035,15 @@ function mountGeneralWorkspace(options) {
     if (program.kind === "explicit-y" || program.kind === "explicit-y-reversed" || program.kind === "explicit-x" || program.kind === "explicit-x-reversed") drawExplicit(targetCtx, targetCanvas, equation, program, tr);
     else contour(targetCtx, targetCanvas, program, tr, equation.color, program.operator === "<" || program.operator === ">");
   }
-  function drawPoints(targetCtx, targetCanvas, tr) {
+  function drawPoints(targetCtx, targetCanvas, tr, interactive) {
     pointHitBoxes = [];
     var placedLabels = [];
     var design = getDesign();
     targetCtx.save();
-    targetCtx.font = (Number(design.fontSizePt) || 11) * 1.333 + 'px "' + (design.fontFamily || "Times New Roman") + '", "Kalpurush", serif';
+    var fontStack = window.MathForgeGraphTypography && window.MathForgeGraphTypography.familyStack
+      ? window.MathForgeGraphTypography.familyStack(design.fontFamily)
+      : '"Times New Roman", "Noto Sans Bengali", serif';
+    targetCtx.font = (Number(design.fontSizePt) || 11) * 1.333 + "px " + fontStack;
     targetCtx.fillStyle = design.fontColor || "#111827";
     state.points.forEach(function (point) {
       if (!point.visible) return;
@@ -1041,7 +1052,12 @@ function mountGeneralWorkspace(options) {
       var xy = worldToScreen(x, y, tr);
       if (xy[0] < -8 || xy[0] > targetCanvas.width + 8 || xy[1] < -8 || xy[1] > targetCanvas.height + 8) return;
       pointHitBoxes.push({ id: point.id, x: xy[0], y: xy[1] });
-      targetCtx.beginPath(); targetCtx.fillStyle = "#2563eb"; targetCtx.arc(xy[0], xy[1], 4.5, 0, Math.PI * 2); targetCtx.fill();
+      var active = interactive && dragging && dragging.mode === "point" && dragging.id === point.id;
+      var hovered = interactive && !dragging && hoveredPointId === point.id;
+      targetCtx.beginPath(); targetCtx.fillStyle = active ? "#1d4ed8" : "#2563eb"; targetCtx.arc(xy[0], xy[1], active ? 6.5 : hovered ? 5.5 : 4.5, 0, Math.PI * 2); targetCtx.fill();
+      if (active || hovered) {
+        targetCtx.beginPath(); targetCtx.strokeStyle = active ? "#f59e0b" : "#60a5fa"; targetCtx.lineWidth = active ? 2.5 : 2; targetCtx.arc(xy[0], xy[1], active ? 9 : 8, 0, Math.PI * 2); targetCtx.stroke();
+      }
       targetCtx.fillStyle = design.fontColor || "#111827";
       var label = String(point.label || "") + " (" + x + ", " + y + ")";
       var labelWidth = targetCtx.measureText ? targetCtx.measureText(label).width : label.length * 7;
@@ -1058,7 +1074,7 @@ function mountGeneralWorkspace(options) {
     });
     targetCtx.restore();
   }
-  function renderInto(targetCtx, targetCanvas, forceWhite) {
+  function renderInto(targetCtx, targetCanvas, forceWhite, interactive) {
     var tr = transform();
     drawPaper(targetCtx, targetCanvas, tr, forceWhite);
     drawAxes(targetCtx, targetCanvas, tr);
@@ -1068,7 +1084,7 @@ function mountGeneralWorkspace(options) {
         if (!equation.visible || !compiled[equation.id]) return;
         drawEquation(targetCtx, targetCanvas, equation, compiled[equation.id], tr);
       });
-      drawPoints(targetCtx, targetCanvas, tr);
+      drawPoints(targetCtx, targetCanvas, tr, interactive === true);
     }
   }
   function showErrors(errors) {
@@ -1104,9 +1120,17 @@ function mountGeneralWorkspace(options) {
     });
     var zoomInput = document.getElementById("zoom");
     if (zoomInput && document.activeElement !== zoomInput) zoomInput.value = String(state.zoom);
-    renderInto(ctx, cv, false);
+    renderInto(ctx, cv, false, true);
   }
   function findById(items, id) { return items.find(function (item) { return item.id === id; }); }
+  function syncPointFields(point) {
+    if (!controlsRoot || typeof controlsRoot.querySelectorAll !== "function") return;
+    Array.prototype.forEach.call(controlsRoot.querySelectorAll("[data-pt-id]"), function (field) {
+      if (field.getAttribute("data-pt-id") !== point.id) return;
+      var key = field.getAttribute("data-pt-field");
+      if (key === "x" || key === "y") field.value = point[key];
+    });
+  }
   function handleField(event) {
     var target = event.target;
     var equationField = target.closest && target.closest("[data-eq-field]");
@@ -1158,25 +1182,74 @@ function mountGeneralWorkspace(options) {
   }
   function eventPoint(event) {
     var rect = cv.getBoundingClientRect();
+    if (!rect || !(rect.width > 0) || !(rect.height > 0)) return { x: 0, y: 0, inside: false };
     return { x: (event.clientX - rect.left) * (cv.width / rect.width), y: (event.clientY - rect.top) * (cv.height / rect.height) };
   }
-  function mouseDown(event) {
-    var position = eventPoint(event), nearest = null, distance = 100;
-    pointHitBoxes.forEach(function (box) { var d = Math.hypot(box.x - position.x, box.y - position.y); if (d < distance) { nearest = box; distance = d; } });
-    if (nearest) dragging = { mode: "point", id: nearest.id };
-    else dragging = { mode: "pan", x: position.x, y: position.y };
+  function findPointAt(position) {
+    var rect = cv.getBoundingClientRect();
+    if (!rect || !(rect.width > 0) || !(rect.height > 0) || position.x < 0 || position.y < 0 || position.x > cv.width || position.y > cv.height) return null;
+    var scaleX = cv.width / rect.width, scaleY = cv.height / rect.height;
+    var nearest = null, distance = 14;
+    pointHitBoxes.forEach(function (box) {
+      var d = Math.hypot((box.x - position.x) / scaleX, (box.y - position.y) / scaleY);
+      if (d <= distance) { nearest = box; distance = d; }
+    });
+    return nearest;
   }
-  function mouseMove(event) {
-    if (!dragging) return;
+  function pointerDown(event) {
+    if (dragging || event.isPrimary === false || (event.button != null && event.button !== 0)) return;
+    var position = eventPoint(event), nearest = findPointAt(position);
+    dragging = nearest ? { mode: "point", id: nearest.id, pointerId: event.pointerId } :
+      { mode: "pan", pointerId: event.pointerId, x: position.x, y: position.y };
+    hoveredPointId = nearest ? nearest.id : null;
+    updateCanvasInteractionClasses();
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    if (event.pointerId != null && typeof cv.setPointerCapture === "function") {
+      try { cv.setPointerCapture(event.pointerId); } catch (ignore) {}
+    }
+    render();
+  }
+  function pointerMove(event) {
+    if (!dragging) {
+      var hover = event.pointerType === "touch" ? null : findPointAt(eventPoint(event));
+      var nextHoveredId = hover ? hover.id : null;
+      if (hoveredPointId !== nextHoveredId) {
+        hoveredPointId = nextHoveredId;
+        updateCanvasInteractionClasses();
+        render();
+      }
+      return;
+    }
+    if (dragging.pointerId != null && event.pointerId != null && dragging.pointerId !== event.pointerId) return;
+    if (typeof event.preventDefault === "function") event.preventDefault();
     var position = eventPoint(event), deltaX = position.x - dragging.x, deltaY = position.y - dragging.y;
     if (dragging.mode === "pan") { state.panX += deltaX; state.panY += deltaY; dragging.x = position.x; dragging.y = position.y; }
     else {
       var tr = transform(), point = findById(state.points, dragging.id);
-      if (point) { var world = screenToWorld(position.x, position.y, tr); point.x = String(Number(world[0].toFixed(5))); point.y = String(Number(world[1].toFixed(5))); }
+      if (point) {
+        var world = screenToWorld(position.x, position.y, tr);
+        point.x = String(Number(world[0].toFixed(5))); point.y = String(Number(world[1].toFixed(5)));
+        syncPointFields(point);
+      }
     }
     render();
   }
-  function mouseUp() { if (!dragging) return; var wasPoint = dragging.mode === "point"; dragging = null; if (wasPoint) controlMarkup(); }
+  function finishPointer(event) {
+    if (!dragging) return;
+    if (event && dragging.pointerId != null && event.pointerId != null && dragging.pointerId !== event.pointerId) return;
+    var wasPoint = dragging.mode === "point";
+    var pointerId = dragging.pointerId;
+    dragging = null;
+    if (pointerId != null && typeof cv.releasePointerCapture === "function") {
+      try {
+        if (typeof cv.hasPointerCapture !== "function" || cv.hasPointerCapture(pointerId)) cv.releasePointerCapture(pointerId);
+      } catch (ignore) {}
+    }
+    hoveredPointId = null;
+    updateCanvasInteractionClasses();
+    if (wasPoint) controlMarkup();
+    render();
+  }
   function wheel(event) {
     event.preventDefault();
     var position = eventPoint(event), before = screenToWorld(position.x, position.y, transform());
@@ -1200,7 +1273,7 @@ function mountGeneralWorkspace(options) {
     var canvas = document.createElement("canvas");
     canvas.width = Math.max(1, cv.width); canvas.height = Math.max(1, cv.height);
     var exportContext = canvas.getContext("2d");
-    renderInto(exportContext, canvas, true);
+    renderInto(exportContext, canvas, true, false);
     var pngUrl = canvas.toDataURL("image/png");
     if (format === "png") return pngUrl;
     if (format !== "svg") throw new Error("Choose PNG or SVG.");
@@ -1213,14 +1286,34 @@ function mountGeneralWorkspace(options) {
   listen(controlsRoot, "input", handleField);
   listen(controlsRoot, "change", handleField);
   listen(controlsRoot, "click", handleAction);
-  listen(cv, "mousedown", mouseDown);
-  listen(cv, "mousemove", mouseMove);
-  listen(window, "mouseup", mouseUp);
+  if (typeof window.PointerEvent === "function") {
+    listen(cv, "pointerdown", pointerDown, { passive: false });
+    listen(window, "pointermove", pointerMove, { passive: false });
+    listen(window, "pointerup", finishPointer);
+    listen(window, "pointercancel", finishPointer);
+    listen(cv, "lostpointercapture", finishPointer);
+  } else {
+    listen(cv, "mousedown", pointerDown);
+    listen(window, "mousemove", pointerMove);
+    listen(window, "mouseup", finishPointer);
+  }
+  listen(window, "blur", finishPointer);
   listen(cv, "wheel", wheel, { passive: false });
   listen(document, "mf:graph-design-changed", render);
+  updateCanvasInteractionClasses();
   var instance = { render: render, resize: function (width, height, dpr) { if (canvasView.resize) canvasView.resize(width, height, dpr); render(); },
     reset: reset, fitView: fitView, export: exportGraph, getState: currentState, setState: setState,
-    unmount: function () { while (cleanups.length) cleanups.pop()(); if (controlsRoot) controlsRoot.innerHTML = ""; } };
+    unmount: function () {
+      if (dragging && dragging.pointerId != null && typeof cv.releasePointerCapture === "function") {
+        try {
+          if (typeof cv.hasPointerCapture !== "function" || cv.hasPointerCapture(dragging.pointerId)) cv.releasePointerCapture(dragging.pointerId);
+        } catch (ignore) {}
+      }
+      dragging = null; hoveredPointId = null; updateCanvasInteractionClasses();
+      while (cleanups.length) cleanups.pop()();
+      if (cv && cv.classList) cv.classList.remove("mf-equation-point-interactive", "mf-equation-point-hover", "mf-equation-canvas-dragging");
+      if (controlsRoot) controlsRoot.innerHTML = "";
+    } };
   plot();
   return instance;
 }

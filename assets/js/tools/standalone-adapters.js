@@ -106,6 +106,15 @@
       },
       addEventListener: function () { return canvas.addEventListener.apply(canvas, arguments); },
       removeEventListener: function () { return canvas.removeEventListener.apply(canvas, arguments); },
+      setPointerCapture: function (pointerId) {
+        if (typeof canvas.setPointerCapture === "function") return canvas.setPointerCapture(pointerId);
+      },
+      releasePointerCapture: function (pointerId) {
+        if (typeof canvas.releasePointerCapture === "function") return canvas.releasePointerCapture(pointerId);
+      },
+      hasPointerCapture: function (pointerId) {
+        return typeof canvas.hasPointerCapture === "function" && canvas.hasPointerCapture(pointerId);
+      },
       classList: canvas.classList,
       toDataURL: function () { return canvas.toDataURL.apply(canvas, arguments); },
       resize: function (nextWidth, nextHeight, nextDpr) {

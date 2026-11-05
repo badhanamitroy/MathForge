@@ -28,4 +28,14 @@ for (const file of rootFiles) {
 }
 cpSync(resolve(projectRoot, "assets"), resolve(outputDirectory, "assets"), { recursive: true });
 
+// Preserve legacy font files in source/archives, but omit them from the
+// deployable app shell now that all runtime typography uses bundled Noto.
+for (const file of [
+  "assets/fonts/kalpurush.ttf",
+  "assets/bangla font/kalpurush.ttf",
+  "assets/bangla font/kalpurush ANSI.ttf"
+]) {
+  rmSync(resolve(outputDirectory, file), { force: true });
+}
+
 console.log(`Prepared static Vercel output at ${outputDirectory}`);

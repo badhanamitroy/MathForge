@@ -61,7 +61,8 @@
     next.axisColor = validColor(saved.axisColor, DEFAULTS.axisColor);
     next.fontColor = validColor(saved.fontColor, DEFAULTS.fontColor);
     next.lineColor = validColor(saved.lineColor, DEFAULTS.lineColor);
-    if (["Times New Roman", "Kalpurush"].indexOf(saved.fontFamily) !== -1) next.fontFamily = saved.fontFamily;
+    if (saved.fontFamily === "Kalpurush") next.fontFamily = "Noto Sans Bengali";
+    else if (["Times New Roman", "Noto Sans Bengali"].indexOf(saved.fontFamily) !== -1) next.fontFamily = saved.fontFamily;
     return next;
   }
 

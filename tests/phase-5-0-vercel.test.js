@@ -70,6 +70,10 @@ test("Vercel config uses a curated static output and only rewrites the file-hand
   assert.ok(!fs.existsSync(path.join(outputDirectory, "docs")));
   assert.ok(!fs.existsSync(path.join(outputDirectory, "backups")));
   assert.ok(!fs.existsSync(path.join(outputDirectory, "tests")));
+  assert.ok(fs.existsSync(path.join(outputDirectory, "assets", "fonts", "NotoSansBengali-VF.ttf")));
+  assert.ok(!fs.existsSync(path.join(outputDirectory, "assets", "fonts", "kalpurush.ttf")));
+  assert.ok(!fs.existsSync(path.join(outputDirectory, "assets", "bangla font", "kalpurush.ttf")));
+  assert.ok(!fs.existsSync(path.join(outputDirectory, "assets", "bangla font", "kalpurush ANSI.ttf")));
 });
 
 test("local static preview serves root and /open-project as the workspace without rewriting assets", async () => {
@@ -116,16 +120,18 @@ test("manifest, worker headers, icons, and all precache resources are deployable
   const assetList = worker.match(/var APP_ASSETS = \[([\s\S]*?)\];/);
   assert.ok(assetList, "service-worker precache list is present");
   const precachePaths = Array.from(assetList[1].matchAll(/"([^"]+)"/g), (match) => match[1]);
-  assert.equal(precachePaths.length, 33);
+  assert.equal(precachePaths.length, 34);
   assert.ok(precachePaths.includes("assets/js/core/graph-scale.js"));
   assert.ok(precachePaths.includes("assets/js/core/equation-math.js"));
   assert.ok(precachePaths.includes("assets/js/core/pie-chart-calculations.js"));
   assert.ok(precachePaths.includes("assets/js/tools/pie-chart-engine.js"));
   assert.ok(precachePaths.includes("assets/css/tools/pie-chart.css"));
+  assert.ok(precachePaths.includes("assets/css/tools/equation-plotter-workspace.css"));
   assert.ok(precachePaths.includes("assets/js/core/indexeddb-project-store.js"));
   assert.ok(precachePaths.includes("assets/js/core/graph-typography.js"));
   assert.ok(precachePaths.includes("assets/js/core/graph-design-settings.js"));
-  assert.ok(precachePaths.includes("assets/fonts/kalpurush.ttf"));
+  assert.ok(precachePaths.includes("assets/fonts/NotoSansBengali-VF.ttf"));
+  assert.ok(!precachePaths.some((assetPath) => /kalpurush/i.test(assetPath)));
   for (const assetPath of precachePaths) {
     const response = await fetch(new URL(assetPath, baseUrl + "/"));
     assert.equal(response.status, 200, assetPath);

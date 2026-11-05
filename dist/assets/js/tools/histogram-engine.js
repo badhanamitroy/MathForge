@@ -53,7 +53,7 @@ function mount(options) {
   }
 
   function graphFont(sizePx, typography) {
-    return graphTypography ? graphTypography.font(sizePx, typography) : `${sizePx}px "Times New Roman", "Kalpurush", serif`;
+    return graphTypography ? graphTypography.font(sizePx, typography) : `${sizePx}px "Times New Roman", "Noto Sans Bengali", serif`;
   }
 
   function setVal(spanId, inputId){

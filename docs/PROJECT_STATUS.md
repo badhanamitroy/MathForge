@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-05
 
-**Latest change:** Reworked the workspace Equation Plotter around multi-equation safe parsing, implicit conics, inequalities, and coordinate points on the shared graph canvas. Focused Equation/project tests pass 19/19. Final full suite passed 70/70; two earlier reruns exposed intermittent existing IndexedDB mock failures. Syntax, Vercel preparation, and 8/8 source/dist checks passed. Browser interaction remains unverified. See [EQUATION_PLOTTER_REDESIGN_REPORT.md](./EQUATION_PLOTTER_REDESIGN_REPORT.md).  
+**Latest change:** Commercial release preparation adds product setup/deployment documentation, repository guidance, and Netlify static-host configuration alongside the existing Vercel setup. Release build and test results are recorded in [FINAL_RELEASE_READINESS_REPORT.md](./FINAL_RELEASE_READINESS_REPORT.md); Vibe96 upload and buyer-facing browser acceptance remain pending.
 **Project:** MathForge (formerly Textbook Graph Suite) — Professional Offline-First Mathematical Visualization Platform  
 **Status as of this document:** The user has manually confirmed that the Vercel-hosted app works, the installed desktop PWA opens MathForge, double-clicking a `.mathforge` file opens that project, and project rename/save work. These are user-confirmed manual acceptance results, not tests independently run in this session. See [PHASE_5_2_MANUAL_PWA_ACCEPTANCE_REPORT.md](./PHASE_5_2_MANUAL_PWA_ACCEPTANCE_REPORT.md). Phase 4.7's requested desktop viewport checks and distributable ZIP remain open. SQLite and cloud sync remain out of scope.
 
@@ -36,6 +36,10 @@
 | **Workspace UI Recovery** | Restore three-column layout, usable canvas height, and independently scrolling settings panels | ✅ Source and build checks pass; browser acceptance pending | [UI_RECOVERY_REPORT.md](./UI_RECOVERY_REPORT.md) |
 | **IndexedDB Save Reliability** | Reconnect stale IndexedDB handles, serialize local/file saves, and report save status accurately | ✅ Automated suite 39/39; Vercel build and source/dist synchronization pass; browser lifecycle checks pending | [INDEXEDDB_SAVE_FIX_REPORT.md](./INDEXEDDB_SAVE_FIX_REPORT.md) |
 | **Native Pie Chart Generator** | Add a fifth registry tool with Bengali-aware calculations, SVG/PNG export, and version-1 persistence | ✅ Automated suite 50/50; syntax, Vercel build, and source/dist checks pass; browser acceptance pending | [PIE_CHART_IMPLEMENTATION_REPORT.md](./PIE_CHART_IMPLEMENTATION_REPORT.md) |
+| **Coordinates Connections & Fill** | Independent point data, manually selected ID-based segments, explicit closed shapes, and optional fill | ✅ Focused automated checks pass; one unrelated IndexedDB mock test failed in full run; syntax/build/source-dist checks pass; browser acceptance pending | [COORDINATES_POINT_CONNECTIONS_REPORT.md](./COORDINATES_POINT_CONNECTIONS_REPORT.md) |
+| **Phase 2A — Offline App-Shell Cache Completeness** | Cache Equation workspace styling, version the updated shell, and test referenced local asset coverage | ✅ PWA and safe automated checks pass; cold offline browser verification pending | [FINAL_PRE_RELEASE_DEEP_AUDIT.md](./FINAL_PRE_RELEASE_DEEP_AUDIT.md#remediation-status-phase-2a) |
+| **Phase 2B — Equation Plotter Point Dragging** | Reliable mouse/touch/pen point dragging with captured pointer lifecycle and transform-aware coordinates | ✅ Focused tests 19/19 and non-destructive suite 80/80; browser interaction pending | [EQUATION_POINT_DRAGGING_REPORT.md](./EQUATION_POINT_DRAGGING_REPORT.md) |
+| **Phase 3 — Commercial Release Preparation** | Product documentation, repository guide, Netlify static configuration, staged build/archive, and readiness review | ✅ Preparation package and automated checks complete; owner/browser release gates remain | [FINAL_RELEASE_READINESS_REPORT.md](./FINAL_RELEASE_READINESS_REPORT.md) |
 
 ## User-Confirmed Manual PWA Acceptance (2026-11-03)
 
@@ -160,3 +164,22 @@ See [PHASE_4_7_EARLY_BUILD_REPORT.md](./PHASE_4_7_EARLY_BUILD_REPORT.md) for the
 | `assets/css/tools/pie-chart.css` | ✅ Native Pie Chart | Workspace-scoped Pie inputs, responsive chart, legend, and calculation output styles. |
 | `assets/css/tools/shared-graph-controls.css` | ✅ Workspace controls | Styles original controls inside the workspace input panel. |
 | `assets/js/common.js` | ✅ Shared utility | Includes listener disposal for editable frequency tables. |
+# Commercial RC verification (2026-11-05)
+
+- Final RC staging checks: 85/85 tests passed in the disposable candidate; source non-destructive suite 81/81; syntax 32/32; source/dist hashes 37/37; CRLF-aware diff check passed.
+- The candidate ZIP and checksum sidecar are prepared separately from the source workspace. Existing source `dist/` and prior blocker-resolved ZIP remain preserved.
+- Commercial release is **NOT READY**: Kalpurush OFL 1.0/1.1 evidence conflicts and needs owner/legal confirmation. PWA cold-offline behavior and Vibe96 owner-controlled demo/listing/seller obligations also remain unverified.
+
+## Local Bengali font replacement — 2026-11-05
+
+- Runtime typography now uses the official Google Fonts Noto Sans Bengali variable font for Bengali glyphs, with Times New Roman retained as the default Latin/math face and Noto Sans Bengali fallback.
+- The local font file, SHA-256, source commit/path, variable axes, OFL 1.1 text, and attribution are recorded in `assets/fonts/README.md` and `assets/fonts/OFL-NotoSansBengali.txt`.
+- Legacy Kalpurush binaries are preserved in the source tree but excluded from generated `dist/`; the service worker precaches the Noto font under a bumped cache version.
+- Existing release ZIPs were not changed and are stale for this font replacement. A new archive requires a separately authorized release build.
+
+### Final font verification — 2026-11-05
+- Font replacement checks: focused font/graph/PWA/export tests **38/38**; complete source non-destructive suite **87/87**; complete disposable-stage suite **91/91**; JavaScript syntax **33/33**.
+- Generated output: source `dist/` and disposable build are each 37 files with no missing, extra, or SHA-256-different files. The Noto font and OFL notice are included; all three legacy Kalpurush font copies are excluded from generated output and retained in source.
+- Browser smoke: all five integrated generator selectors were switched on the local build; Bengali Pie title, category names, numerals, legend, calculations and drawing steps rendered after sample values were entered. Cold-offline launch and browser download workflows remain unverified.
+- The Vercel preparation script was inadvertently run once in the source workspace; generated `dist/` contents were restored from the existing staging snapshot and reconciled to the intended Noto build. Final parity is exact. No backups or release ZIPs were modified.
+- Existing release ZIPs predate this replacement and must be rebuilt separately before distribution. Commercial release is not approved by this verification.

@@ -1,9 +1,10 @@
 /* assets/css/common.css */
 @font-face{
-  font-family:"Kalpurush";
-  src:url("../fonts/kalpurush.ttf") format("truetype");
+  font-family:"Noto Sans Bengali";
+  src:url("../fonts/NotoSansBengali-VF.ttf") format("truetype");
   font-style:normal;
-  font-weight:400;
+  font-weight:100 900;
+  font-stretch:62.5% 100%;
   font-display:swap;
 }
 
@@ -50,7 +51,7 @@
 html,body{ height:100%; }
 body{
   margin:0;
-  font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  font-family: Inter, "Noto Sans Bengali", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
   background:
     radial-gradient(circle at top, rgba(81,132,255,0.18), transparent 24%),
     linear-gradient(180deg, var(--bg-900), var(--bg-800) 25%, var(--bg-700));

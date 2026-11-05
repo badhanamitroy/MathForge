@@ -2,6 +2,20 @@
   color: #e5e7eb;
 }
 
+.mf-workspace canvas.mf-equation-point-interactive {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mf-workspace canvas.mf-equation-point-hover {
+  cursor: grab;
+}
+
+.mf-workspace canvas.mf-equation-canvas-dragging {
+  cursor: grabbing;
+}
+
 .mf-workspace .eq-general-panel {
   display: grid;
   gap: 12px;
@@ -92,7 +106,7 @@
   border-radius: 5px;
   background: #111318;
   color: #f9fafb;
-  font: 13px/1.2 "Times New Roman", "Kalpurush", serif;
+  font: 13px/1.2 "Times New Roman", "Noto Sans Bengali", serif;
 }
 
 .mf-workspace .eq-general-panel .eq-visible {
@@ -145,7 +159,7 @@
 
 .mf-workspace .eq-hint code {
   color: #bfdbfe;
-  font: 11px/1.4 "Times New Roman", "Kalpurush", serif;
+  font: 11px/1.4 "Times New Roman", "Noto Sans Bengali", serif;
 }
 
 .mf-workspace .eq-row-error {

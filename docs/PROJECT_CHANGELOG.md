@@ -1,5 +1,71 @@
 # Project Changelog
 
+## [MathForge] Phase 3 — Commercial Release & Vibe96 Preparation
+
+### Date
+2026-11-05
+
+### Overview
+Replaced the placeholder README with product, run, project-storage, offline, export, testing, and deployment guidance. Added a repository-specific `AGENTS.md` architecture and safe-build guide, Netlify static deployment settings equivalent to the current Vercel output configuration, and a Vibe96 listing/submission pack with claims and asset checks deliberately left for owner confirmation. No existing feature, font, dependency, project format, or historical audit finding was removed.
+
+### Verification
+- Disposable staging build completed. Full suite in staging passed **85/85**; non-destructive source suite passed **81/81**. JavaScript syntax checks passed for 32 files; source/dist SHA-256 parity passed for 37/37 runtime files.
+- Corrected the existing Vercel preview test's stale precache count (33 to 34) and added an explicit assertion for the Equation Plotter workspace stylesheet.
+- Staged archive and pending owner/browser checks are recorded in [FINAL_RELEASE_READINESS_REPORT.md](./FINAL_RELEASE_READINESS_REPORT.md).
+- No commit, push, or deployment is part of this preparation.
+
+## [MathForge] Phase 2B — Equation Plotter Point Dragging
+
+### Date
+2026-11-05
+
+### Overview
+Replaced the integrated Equation Plotter's mouse-only canvas drag lifecycle with Pointer Events for mouse, touch, and pen. The logical canvas adapter now forwards pointer capture methods to the backing canvas. Active pointer movement is tracked through release, cancellation, capture loss, blur, and canvas exit; hit testing uses a 14 CSS-pixel radius and selects the nearest visible point. Canvas markers, labels, and x/y controls update during movement, with a hover/drag indication. Native touch gestures are disabled only on the Equation Plotter canvas while it is mounted. A mouse fallback remains for browsers without Pointer Events. The standalone Equation renderer, expression parser, graph transforms, and `.mathforge` version-1 schema are unchanged.
+
+### Verification
+- Focused Equation Plotter and project persistence tests: 19/19 passed.
+- All non-destructive project tests: 80/80 passed. The Vercel preparation test was excluded because it deletes and recreates `dist/`.
+- Changed JavaScript syntax checks: 4/4 passed.
+- Read-only SHA-256 comparison: all 37 source runtime files match their generated `dist/` copies.
+- Browser pointer interaction was not performed; manual steps are in [EQUATION_POINT_DRAGGING_REPORT.md](./EQUATION_POINT_DRAGGING_REPORT.md).
+
+See [EQUATION_POINT_DRAGGING_REPORT.md](./EQUATION_POINT_DRAGGING_REPORT.md).
+
+## [MathForge] Phase 2A — Offline App-Shell Cache Completeness
+
+### Date
+2026-11-05
+
+### Overview
+Added `assets/css/tools/equation-plotter-workspace.css` to the existing service-worker app-shell precache and advanced the shell cache from v9 to v10 so installed clients can activate the revised asset set. Extended the PWA tests to resolve local references from the workspace and four standalone HTML pages, recursively inspect linked CSS `url()`/`@import` references, include manifest icons, and report references missing from `APP_ASSETS`. The test also checks that all declared precache paths exist and that the five generator engines are explicitly cached.
+
+The current generators are statically referenced by the workspace HTML and are covered by the cache audit. Dynamic `blob:`/`data:` resources are intentionally excluded; project files, documentation, tests, backups, and other non-runtime repository files are not added to the app shell.
+
+### Verification
+- `node --test tests/phase-4-8-pwa.test.js` — 10/10 passed.
+- All non-destructive automated tests — 75/75 passed. The Vercel preparation test was not run because it deletes/recreates `dist/`.
+- JavaScript syntax checks passed for 31 source, script, worker, and test files.
+- Source `service-worker.js` and `dist/service-worker.js` SHA-256 hashes match.
+- Browser cold-offline verification was not performed. Manual update/install, bypass HTTP cache, offline Equation Plotter styling, and five-generator switching remain required.
+
+See [FINAL_PRE_RELEASE_DEEP_AUDIT.md](./FINAL_PRE_RELEASE_DEEP_AUDIT.md#remediation-status-phase-2a).
+
+## [MathForge] Coordinates Point Connections and Polygon Fill
+
+### Date
+2026-11-05
+
+### Overview
+Coordinates point creation no longer implicitly closes or fills a set. Added separate ID-referenced connection records and explicit closed-shape definitions. The workspace Coordinates Inputs panel now provides Connect Points mode, line visibility and styling, individual connection removal, Close/Reopen Shape actions, and optional fill controls. Existing version-1 states continue to open; saved legacy polygon intent is migrated once into explicit point-ID shape data. The `.mathforge` version and project manager serialization remain unchanged. PNG and the existing raster-backed SVG export use the updated shared Coordinates canvas renderer.
+
+### Verification
+- `node --test tests/coordinates-connections.test.js` — 8/8 passed, including explicit mode selection and cancellation.
+- `node --test tests/*.test.js` — final run **78/78 passed**, including the IndexedDB lifecycle and local Vercel preview tests. An earlier run intermittently failed the existing IndexedDB recovery-copy mock; it passed on the final rerun.
+- JavaScript syntax checks passed for application scripts, service worker, and the new Coordinates test. `node scripts/prepare-vercel.mjs` completed. SHA-256 checks for the updated Coordinates engine, stylesheet, workspace entry, and service worker matched their `dist/` copies.
+- Browser pointer interaction and visual verification were not performed; the available browser control rejected the local `file:` URL by policy.
+
+See [COORDINATES_POINT_CONNECTIONS_REPORT.md](./COORDINATES_POINT_CONNECTIONS_REPORT.md).
+
 ## [MathForge] General-Purpose Equation Plotter
 
 ### Date
@@ -815,3 +881,18 @@ The label hit-testing is sensitive to the exact mouse position within the render
 - Added layout regression checks for panel DOM grouping, bounded center sizing, toolbar direction, and panel scrolling.
 - JavaScript syntax checks: 18 files passed. Full suite: 19 passed, 0 failed. Vercel preparation succeeded; 30 generated files match source SHA-256 hashes.
 - Browser viewport, graph interaction, save/open, and export acceptance remains pending; the browser security policy blocks the local `file:` preview and no alternate route was used.
+# 2026-11-05 — Commercial RC verification
+
+- Re-ran the complete staged suite and non-destructive source suite after the IndexedDB test-double correction; recorded actual results and the localhost permission failure from an unprivileged source run.
+- Prepared a separate RC package with font-license evidence and seller-readiness notes. Preserved the source `dist/`, original ZIP, and prior blocker-resolved ZIP.
+- No feature or graph-engine changes were made for this release sprint. Commercial upload remains blocked pending owner/legal and Vibe96 acceptance steps.
+
+## 2026-11-05 — Replace runtime Kalpurush with local Noto Sans Bengali
+
+- Added the official Google Fonts Noto Sans Bengali variable TTF and its unmodified OFL 1.1 license text plus source/hash/attribution documentation.
+- Updated shared typography, renderer fallbacks, Pie SVG typography, standalone pages through the shared CSS, and old saved font-family migration.
+- Bumped the service-worker shell cache and changed its precache entry to the local Noto font. The Vercel preparation output excludes legacy Kalpurush binaries while leaving source copies and backups untouched.
+- Existing release ZIPs were preserved; they need rebuilding before distribution.
+- Verification: focused tests 38/38; source non-destructive suite 87/87; full disposable-stage suite 91/91; JS syntax 33/33; generated `dist/` parity 37/37 with zero hash differences; CRLF-aware `git diff --check` passed.
+- Local browser smoke showed Bengali Pie Chart text and switched across all five integrated generator selectors. Cold-offline PWA and browser download acceptance were not performed.
+- The preparation script was accidentally invoked once in source; `dist/` was restored/reconciled and now exactly matches a fresh disposable build. Existing ZIPs remain untouched and stale for the Noto replacement.

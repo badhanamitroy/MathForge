@@ -23,12 +23,25 @@
   var DEFAULT_FILL_COLOR = "#5b8def";
   var DEFAULT_BORDER_COLOR = "#111827";
   var DEFAULT_DIAGONAL_COLOR = "#475569";
+  var DEFAULT_CONNECTION_COLOR = "#111827";
+
+  function makePointId() {
+    return "point-" + Date.now() + "-" + Math.random().toString(16).slice(2, 10);
+  }
+
+  function makeConnectionId() {
+    return "connection-" + Date.now() + "-" + Math.random().toString(16).slice(2, 10);
+  }
+
+  function makeShapeId() {
+    return "shape-" + Date.now() + "-" + Math.random().toString(16).slice(2, 10);
+  }
 
   function defaultRenderOptions() {
     return {
       polygon: {
-        visible: true,
-        fillVisible: true,
+        visible: false,
+        fillVisible: false,
         fillColor: DEFAULT_FILL_COLOR,
         fillOpacity: 0.18,
         borderVisible: true,
@@ -77,11 +90,13 @@
 
   function preservePointStyles(existingPoints, parsedPoints) {
     var styleMap = Object.create(null);
+    var labelMap = Object.create(null);
     var i;
     for (i = 0; i < (existingPoints || []).length; i++) {
       var pt = existingPoints[i];
       var key = getPointStyleKey(pt);
       styleMap[key] = normalizePointStyle(pt.style);
+      if (pt.label && !labelMap[String(pt.label).toUpperCase()]) labelMap[String(pt.label).toUpperCase()] = pt;
     }
 
     for (i = 0; i < (parsedPoints || []).length; i++) {
@@ -89,9 +104,78 @@
       var k = getPointStyleKey(p);
       var matchingStyle = styleMap[k];
       p.style = normalizePointStyle(matchingStyle || p.style);
+      var matchingPoint = labelMap[String(p.label || "").toUpperCase()];
+      p.id = matchingPoint && matchingPoint.id ? matchingPoint.id : makePointId();
     }
 
     return parsedPoints;
+  }
+
+  function connectionKey(connection) {
+    var start = String(connection.startSetId || connection.setId || "") + "/" + String(connection.startPointId || "");
+    var end = String(connection.endSetId || connection.setId || "") + "/" + String(connection.endPointId || "");
+    return [start, end].sort().join("::");
+  }
+
+  function addConnection(state, start, end) {
+    if (!state || !start || !end || !start.pointId || !end.pointId) return { ok: false, reason: "Select two existing points." };
+    if (!findPointByRef(state.pointSets, start.setId, start.pointId) || !findPointByRef(state.pointSets, end.setId, end.pointId)) return { ok: false, reason: "Select two existing points." };
+    if (start.setId === end.setId && start.pointId === end.pointId) return { ok: false, reason: "Choose a different endpoint." };
+    if (!Array.isArray(state.connections)) state.connections = [];
+    var candidate = { id: makeConnectionId(), startSetId: start.setId, startPointId: start.pointId, endSetId: end.setId, endPointId: end.pointId };
+    var key = connectionKey(candidate);
+    if (state.connections.some(function (item) { return connectionKey(item) === key; })) return { ok: false, reason: "That connection already exists." };
+    state.connections.push(candidate);
+    return { ok: true, connection: candidate };
+  }
+
+  function selectConnectionPoint(state, pointRef) {
+    if (!state || !state.connectionMode) return { ok: false, reason: "Enable Connect Points mode first." };
+    if (!pointRef || !pointRef.pointId || !findPointByRef(state.pointSets, pointRef.setId, pointRef.pointId)) {
+      return { ok: false, reason: "Select an existing point." };
+    }
+    if (!state.connectionStart) {
+      state.connectionStart = { setId: pointRef.setId, pointId: pointRef.pointId };
+      return { ok: true, started: true };
+    }
+    var result = addConnection(state, state.connectionStart, pointRef);
+    if (result.ok) state.connectionStart = null;
+    result.started = false;
+    return result;
+  }
+
+  function cancelConnection(state) {
+    if (!state) return;
+    state.connectionMode = false;
+    state.connectionStart = null;
+  }
+
+  function closePointSet(state, set) {
+    var points = set && Array.isArray(set.points) ? set.points : [];
+    var ids = Array.from(new Set(points.map(function (point) { return point.id; }).filter(Boolean)));
+    if (new Set(ids).size < 3) return { ok: false, reason: "A closed shape needs at least three distinct points." };
+    if (!Array.isArray(state.closedShapes)) state.closedShapes = [];
+    if (state.closedShapes.some(function (shape) { return shape.setId === set.id; })) return { ok: false, reason: "This point set already has a closed shape." };
+    var shape = { id: makeShapeId(), setId: set.id, pointIds: ids.slice() };
+    state.closedShapes.push(shape);
+    return { ok: true, shape: shape };
+  }
+
+  function prunePointReferences(state, set) {
+    if (!set) return;
+    var ids = Object.create(null);
+    (set.points || []).forEach(function (point) { if (point.id) ids[point.id] = true; });
+    state.connections = (state.connections || []).filter(function (line) {
+      var startExists = line.startSetId === set.id ? ids[line.startPointId] : true;
+      var endExists = line.endSetId === set.id ? ids[line.endPointId] : true;
+      return startExists && endExists;
+    });
+    state.closedShapes = (state.closedShapes || []).filter(function (shape) {
+      if (shape.setId !== set.id) return true;
+      shape.pointIds = (shape.pointIds || []).filter(function (id) { return ids[id]; });
+      return new Set(shape.pointIds).size >= 3;
+    });
+    if (state.connectionStart && state.connectionStart.setId === set.id && !ids[state.connectionStart.pointId]) state.connectionStart = null;
   }
 
   function makeSetId() {
@@ -336,7 +420,7 @@
     var align = options.align || "left";
     var baseline = options.baseline || "middle";
 
-    ctx.font = graphTypography ? graphTypography.font(fontSize, typography) : fontSize + 'px "Times New Roman", "Kalpurush", serif';
+    ctx.font = graphTypography ? graphTypography.font(fontSize, typography) : fontSize + 'px "Times New Roman", "Noto Sans Bengali", serif';
     ctx.textAlign = align;
     ctx.textBaseline = baseline;
 
@@ -530,6 +614,73 @@
     }
   }
 
+  function findPointByRef(sets, setId, pointId) {
+    var set = (sets || []).find(function (item) { return item.id === setId; });
+    var point = set && (set.points || []).find(function (item) { return item.id === pointId; });
+    return point ? { set: set, point: point } : null;
+  }
+
+  function drawClosedShapes(ctx, state, sets, tf) {
+    (state.closedShapes || []).forEach(function (shape) {
+      var set = (sets || []).find(function (item) { return item.id === shape.setId; });
+      var ids = Array.from(new Set((shape.pointIds || []).filter(function (id) {
+        return set && (set.points || []).some(function (point) { return point.id === id; });
+      })));
+      if (ids.length < 3 || new Set(ids).size < 3) return;
+      var points = ids.map(function (id) { return set.points.find(function (point) { return point.id === id; }); });
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(tf.xToPx(points[0].x), tf.yToPx(points[0].y));
+      for (var i = 1; i < points.length; i++) ctx.lineTo(tf.xToPx(points[i].x), tf.yToPx(points[i].y));
+      ctx.closePath();
+      if (state.fillEnabled && Number(state.fillOpacity) > 0) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, Number(state.fillOpacity) || 0));
+        ctx.fillStyle = /^#[0-9a-fA-F]{6}$/.test(state.fillColor || "") ? state.fillColor : DEFAULT_FILL_COLOR;
+        ctx.fill();
+        ctx.restore();
+      }
+      if (state.connectionsVisible !== false) {
+        ctx.save();
+        ctx.setLineDash(resolveDashPattern(state.connectionStyle));
+        ctx.strokeStyle = /^#[0-9a-fA-F]{6}$/.test(state.connectionColor || "") ? state.connectionColor : DEFAULT_CONNECTION_COLOR;
+        ctx.lineWidth = Math.max(1, Math.min(16, Number(state.connectionWidth) || 2));
+        ctx.stroke();
+        ctx.restore();
+      }
+      ctx.restore();
+    });
+  }
+
+  function drawConnections(ctx, state, sets, tf) {
+    if (state.connectionsVisible === false) return;
+    var closedEdges = Object.create(null);
+    (state.closedShapes || []).forEach(function (shape) {
+      var ids = shape.pointIds || [];
+      for (var i = 0; i < ids.length; i++) {
+        var a = ids[i], b = ids[(i + 1) % ids.length];
+        closedEdges[shape.setId + ":" + [a, b].sort().join(":")] = true;
+      }
+    });
+    ctx.save();
+    ctx.setLineDash(resolveDashPattern(state.connectionStyle));
+    ctx.strokeStyle = /^#[0-9a-fA-F]{6}$/.test(state.connectionColor || "") ? state.connectionColor : DEFAULT_CONNECTION_COLOR;
+    ctx.lineWidth = Math.max(1, Math.min(16, Number(state.connectionWidth) || 2));
+    (state.connections || []).forEach(function (line) {
+      var key = line.startSetId === line.endSetId
+        ? line.startSetId + ":" + [line.startPointId, line.endPointId].sort().join(":") : "";
+      if (key && closedEdges[key]) return;
+      var start = findPointByRef(sets, line.startSetId, line.startPointId);
+      var end = findPointByRef(sets, line.endSetId, line.endPointId);
+      if (!start || !end) return;
+      ctx.beginPath();
+      ctx.moveTo(tf.xToPx(start.point.x), tf.yToPx(start.point.y));
+      ctx.lineTo(tf.xToPx(end.point.x), tf.yToPx(end.point.y));
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
   function drawSet(ctx, set, tf, settings, showLabels, labelBoxes, coordPrecision) {
     if (!set || !set.points || set.points.length === 0) return;
     var FONT = settings.FONT;
@@ -595,6 +746,17 @@
     var state = {
       pointSets: [],
       activeSetId: null,
+      connections: [],
+      connectionsVisible: true,
+      connectionColor: DEFAULT_CONNECTION_COLOR,
+      connectionWidth: 2,
+      connectionStyle: "solid",
+      connectionMode: false,
+      connectionStart: null,
+      closedShapes: [],
+      fillEnabled: false,
+      fillColor: DEFAULT_FILL_COLOR,
+      fillOpacity: 0.18,
       viewZoom: 1.0,
       viewOffset: { x: 0, y: 0 },
       canvasBgColor: "#ffffff",
@@ -748,9 +910,24 @@
         fontColor: settings.typography.fontColor
       });
 
-      drawDiagonalsForSets(ctx, state.pointSets, tf);
+      if (state.connectionsVisible !== false) drawDiagonalsForSets(ctx, state.pointSets, tf);
+      drawClosedShapes(ctx, state, state.pointSets, tf);
+      drawConnections(ctx, state, state.pointSets, tf);
       for (var j = 0; j < state.pointSets.length; j++) {
         drawSet(ctx, state.pointSets[j], tf, settings, state.showLabels, labelBoxes, state.coordPrecision);
+      }
+      if (state.connectionStart) {
+        var selected = findPointByRef(state.pointSets, state.connectionStart.setId, state.connectionStart.pointId);
+        if (selected) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(tf.xToPx(selected.point.x), tf.yToPx(selected.point.y), 11, 0, Math.PI * 2);
+          ctx.strokeStyle = "#2563eb";
+          ctx.lineWidth = 3;
+          ctx.setLineDash([]);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
       drawTextBox(ctx, "Small grid = 1 unit", 16, logicalH - 14, { fontSize: settings.FONT.caption, defaultFontSize: 16, typography: settings.typography, align: "left" });
     }
@@ -790,6 +967,11 @@
       draw: draw,
       resetView: resetView,
       hitTestPointMarker: hitTestPointMarker,
+      addConnection: function (start, end) { return addConnection(state, start, end); },
+      selectConnectionPoint: function (pointRef) { return selectConnectionPoint(state, pointRef); },
+      cancelConnection: function () { cancelConnection(state); },
+      closePointSet: function (set) { return closePointSet(state, set); },
+      prunePointReferences: function (set) { prunePointReferences(state, set); },
       getLastTransform: function () { return lastTf; },
       getLabelBoxes: function () { return labelBoxes; },
       getDrag: function () { return drag; }
@@ -1311,6 +1493,7 @@
         try {
           var parsed = parsePoints(activeSet.inputText);
           activeSet.points = preservePointStyles(activeSet.points, parsed);
+          engine.prunePointReferences(activeSet);
           ensurePointOffsets(activeSet);
           rebuildPointControls(activeSet.points);
         } catch (err) {}
@@ -1475,8 +1658,9 @@
       }
     }
 
-    function buildInputRow(label, x, y) {
+    function buildInputRow(label, x, y, id) {
       return {
+        id: id || null,
         label: label == null ? "" : String(label),
         x: x == null ? "" : String(x),
         y: y == null ? "" : String(y)
@@ -1497,11 +1681,11 @@
       inputRows = [];
       if (activeSet && Array.isArray(activeSet.draftRows)) {
         inputRows = activeSet.draftRows.map(function (row) {
-          return buildInputRow(row.label, row.x, row.y);
+          return buildInputRow(row.label, row.x, row.y, row.id);
         });
       } else if (activeSet && activeSet.points && activeSet.points.length) {
         inputRows = activeSet.points.map(function (point) {
-          return buildInputRow(point.label, point.xRaw != null ? point.xRaw : point.x, point.yRaw != null ? point.yRaw : point.y);
+          return buildInputRow(point.label, point.xRaw != null ? point.xRaw : point.x, point.yRaw != null ? point.yRaw : point.y, point.id);
         });
       }
       if (inputRows.length === 0) inputRows.push(buildInputRow("A", "", ""));
@@ -1614,6 +1798,27 @@
                 '<button type="button" class="mf-coord-btn mf-btn-primary mf-btn-plot" id="mfCoordPlotBtn">&#9654; Plot Points</button>' +
               '</div>' +
             '</div>' +
+            '<div class="mf-coord-card mf-coord-connections-card">' +
+              '<div class="mf-coord-card-header"><div class="mf-coord-card-title">Lines &amp; Connections</div><div class="mf-coord-card-subtitle">Points stay independent until you connect them.</div></div>' +
+              '<div class="mf-coord-actions-row"><button type="button" class="mf-coord-btn mf-btn-add" id="mfCoordConnectModeBtn" aria-pressed="false">Connect Points</button><button type="button" class="mf-coord-btn mf-btn-add" id="mfCoordCancelConnectionBtn" disabled>Cancel Connection</button></div>' +
+              '<div class="mf-coord-hint" id="mfCoordConnectHint" role="status" aria-live="polite">Select Connect Points, then choose two points on the graph.</div>' +
+              '<label class="mf-coord-check-row"><input id="mfCoordLinesVisible" type="checkbox" checked> Show All Lines</label>' +
+              '<div class="mf-coord-style-row"><span>Line Colour</span><input id="mfCoordLineColor" type="color" value="#111827"></div>' +
+              '<div class="mf-coord-row"><label>Line Thickness</label><input id="mfCoordLineWidth" type="range" min="1" max="12" value="2"><div class="val" id="mfCoordLineWidthVal">2</div></div>' +
+              '<div class="mf-coord-row"><label>Line Style</label><select id="mfCoordLineStyle"><option value="solid" selected>Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></select></div>' +
+              '<div class="mf-coord-actions-row"><button type="button" class="mf-coord-btn mf-btn-add" id="mfCoordClearConnectionsBtn">Clear All Connections</button></div>' +
+              '<div class="mf-coord-connection-list" id="mfCoordConnectionList"></div>' +
+            '</div>' +
+            '<div class="mf-coord-card mf-coord-fill-card">' +
+              '<div class="mf-coord-card-header"><div class="mf-coord-card-title">Fill</div><div class="mf-coord-card-subtitle">Close a point set explicitly before filling it.</div></div>' +
+              '<button type="button" class="mf-coord-btn mf-btn-add" id="mfCoordCloseShapeBtn">Close Shape (active set)</button>' +
+              '<button type="button" class="mf-coord-btn mf-btn-add" id="mfCoordOpenShapeBtn" hidden>Reopen Shape (active set)</button>' +
+              '<label class="mf-coord-check-row"><input id="mfCoordFillEnabled" type="checkbox"> Enable Fill</label>' +
+              '<div class="mf-coord-style-row"><span>Fill Colour</span><input id="mfCoordFillColor" type="color" value="#5b8def"></div>' +
+              '<div class="mf-coord-row"><label>Fill Opacity</label><input id="mfCoordFillOpacity" type="range" min="0" max="100" value="18"><div class="val" id="mfCoordFillOpacityVal">18%</div></div>' +
+              '<button type="button" class="mf-coord-btn mf-btn-add" id="mfCoordNoFillBtn">Disable Fill / No Fill</button>' +
+              '<div class="mf-coord-hint" id="mfCoordShapeHint" role="status" aria-live="polite"></div>' +
+            '</div>' +
             '<div class="mf-coord-section-title">Point Sets</div>' +
             '<div class="mf-coord-set-manager">' +
               '<div class="mf-coord-set-header">' +
@@ -1643,15 +1848,6 @@
             '<div class="mf-coord-section-title">Point &amp; Marker Styling</div>' +
             '<div class="mf-coord-hint">Click &amp; drag labels on the canvas or adjust a point below:</div>' +
             '<div id="mfCoordPointControls" class="mf-coord-point-controls"></div>' +
-            '<div class="mf-coord-section-title">Polygon Controls</div>' +
-            '<div class="mf-coord-row"><label><input id="mfCoordPolyVisible" type="checkbox" checked> Show polygon</label></div>' +
-            '<div class="mf-coord-row"><label><input id="mfCoordPolyFillVisible" type="checkbox" checked> Show fill</label></div>' +
-            '<div class="mf-coord-style-row"><span>Fill Color</span><input id="mfCoordPolyFillColor" type="color" value="#5b8def"></div>' +
-            '<div class="mf-coord-row"><label>Fill Opacity</label><input id="mfCoordPolyFillOpacity" type="range" min="0" max="100" value="18"><div class="val" id="mfCoordPolyFillOpacityVal">18%</div></div>' +
-            '<div class="mf-coord-row"><label><input id="mfCoordPolyBorderVisible" type="checkbox" checked> Show border</label></div>' +
-            '<div class="mf-coord-style-row"><span>Border Color</span><input id="mfCoordPolyBorderColor" type="color" value="#111827"></div>' +
-            '<div class="mf-coord-row"><label>Border Width</label><input id="mfCoordPolyBorderWidth" type="range" min="1" max="12" value="3"><div class="val" id="mfCoordPolyBorderWidthVal">3</div></div>' +
-
             '<div class="mf-coord-section-title">Diagonal Controls</div>' +
             '<div class="mf-coord-row"><label><input id="mfCoordShowDiagonals" type="checkbox"> Show diagonals</label></div>' +
             '<div class="mf-coord-style-row"><span>Color</span><input id="mfCoordDiagColor" type="color" value="#475569"></div>' +
@@ -1957,7 +2153,76 @@
           var graphBold = document.getElementById("mfGraphBold");
           if (graphBold) graphBold.checked = Boolean(state.bold);
 
+          syncConnectionUI();
+
           updateZoomReadout();
+        }
+
+        function syncConnectionUI() {
+          var modeBtn = document.getElementById("mfCoordConnectModeBtn");
+          var cancelBtn = document.getElementById("mfCoordCancelConnectionBtn");
+          var hint = document.getElementById("mfCoordConnectHint");
+          if (modeBtn) {
+            modeBtn.classList.toggle("active", Boolean(state.connectionMode));
+            modeBtn.setAttribute("aria-pressed", state.connectionMode ? "true" : "false");
+            modeBtn.textContent = state.connectionMode ? "Connect Points: On" : "Connect Points";
+          }
+          if (cancelBtn) cancelBtn.disabled = !state.connectionMode && !state.connectionStart;
+          if (hint) {
+            if (state.connectionStart) hint.textContent = "Select the next point to create a line segment.";
+            else if (state.connectionMode) hint.textContent = "Select a starting point on the graph.";
+            else hint.textContent = "Select Connect Points, then choose two points on the graph.";
+          }
+          var linesVisible = document.getElementById("mfCoordLinesVisible");
+          var lineColor = document.getElementById("mfCoordLineColor");
+          var lineWidth = document.getElementById("mfCoordLineWidth");
+          var lineStyle = document.getElementById("mfCoordLineStyle");
+          if (linesVisible) linesVisible.checked = state.connectionsVisible !== false;
+          if (lineColor) lineColor.value = state.connectionColor || DEFAULT_CONNECTION_COLOR;
+          if (lineWidth) {
+            lineWidth.value = String(Math.max(1, Math.min(12, Number(state.connectionWidth) || 2)));
+            var widthVal = document.getElementById("mfCoordLineWidthVal");
+            if (widthVal) widthVal.textContent = lineWidth.value;
+          }
+          if (lineStyle) lineStyle.value = normalizeLineStyle(state.connectionStyle);
+          var fillEnabled = document.getElementById("mfCoordFillEnabled");
+          var fillColor = document.getElementById("mfCoordFillColor");
+          var fillOpacity = document.getElementById("mfCoordFillOpacity");
+          if (fillEnabled) fillEnabled.checked = Boolean(state.fillEnabled);
+          if (fillColor) fillColor.value = state.fillColor || DEFAULT_FILL_COLOR;
+          if (fillOpacity) {
+            fillOpacity.value = String(Math.round(Math.max(0, Math.min(1, Number(state.fillOpacity) || 0)) * 100));
+            var opacityVal = document.getElementById("mfCoordFillOpacityVal");
+            if (opacityVal) opacityVal.textContent = fillOpacity.value + "%";
+          }
+          var shapeHint = document.getElementById("mfCoordShapeHint");
+          var activeSet = engine.getActiveSet();
+          var activeShape = (state.closedShapes || []).find(function (shape) { return activeSet && shape.setId === activeSet.id; });
+          if (shapeHint) shapeHint.textContent = activeShape ? "Active set is explicitly closed and ready to fill." : "No closed shape in the active set.";
+          var reopenShape = document.getElementById("mfCoordOpenShapeBtn");
+          if (reopenShape) reopenShape.hidden = !activeShape;
+          var connectionList = document.getElementById("mfCoordConnectionList");
+          if (connectionList) {
+            connectionList.innerHTML = "";
+            (state.connections || []).forEach(function (connection) {
+              var start = findPointByRef(state.pointSets, connection.startSetId, connection.startPointId);
+              var end = findPointByRef(state.pointSets, connection.endSetId, connection.endPointId);
+              if (!start || !end) return;
+              var row = document.createElement("div");
+              row.className = "mf-coord-connection-item";
+              var label = document.createElement("span");
+              label.textContent = start.point.label + "–" + end.point.label;
+              var remove = document.createElement("button");
+              remove.type = "button";
+              remove.className = "mf-coord-btn-del";
+              remove.dataset.connectionId = connection.id;
+              remove.setAttribute("aria-label", "Remove connection " + label.textContent);
+              remove.textContent = "×";
+              row.appendChild(label);
+              row.appendChild(remove);
+              connectionList.appendChild(row);
+            });
+          }
         }
 
         // Wire canvas mouse interactions
@@ -2053,6 +2318,22 @@
 
         addListener(mountedCanvas, "mousedown", function (e) {
           var pt = canvasPointFromEvent(e);
+          if (state.connectionMode) {
+            var connectHit = engine.hitTestPointMarker(pt.x, pt.y);
+            e.preventDefault();
+            if (!connectHit) {
+              var connectHint = document.getElementById("mfCoordConnectHint");
+              if (connectHint) connectHint.textContent = "Select an existing point. Empty canvas does not create a point in connection mode.";
+              return;
+            }
+            var result = engine.selectConnectionPoint({ setId: connectHit.setId, pointId: connectHit.point.id });
+            syncConnectionUI();
+            var connectHintResult = document.getElementById("mfCoordConnectHint");
+            if (connectHintResult && result.started) connectHintResult.textContent = "Starting point selected. Select the next point.";
+            else if (connectHintResult) connectHintResult.textContent = result.ok ? "Line created. Select another point pair, or cancel connection mode." : result.reason;
+            renderUI();
+            return;
+          }
           var hit = hitTestLabel(engine.getLabelBoxes(), pt.x, pt.y);
 
           if (hit) {
@@ -2132,7 +2413,7 @@
             if (!inputRows[rowIndex]) return;
             inputRows[rowIndex][input.dataset.field] = input.value;
             var activeSet = engine.getActiveSet();
-            if (activeSet) activeSet.draftRows = inputRows.map(function (row) { return buildInputRow(row.label, row.x, row.y); });
+            if (activeSet) activeSet.draftRows = inputRows.map(function (row) { return buildInputRow(row.label, row.x, row.y, row.id); });
           });
           addListener(inputRowsContainer, "click", function (event) {
             var button = event.target.closest("button[data-action='remove-point']");
@@ -2141,7 +2422,7 @@
             if (inputRows.length === 0) inputRows.push(buildInputRow("A", "", ""));
             renderInputRows();
             var activeSet = engine.getActiveSet();
-            if (activeSet) activeSet.draftRows = inputRows.map(function (row) { return buildInputRow(row.label, row.x, row.y); });
+            if (activeSet) activeSet.draftRows = inputRows.map(function (row) { return buildInputRow(row.label, row.x, row.y, row.id); });
           });
         }
 
@@ -2152,7 +2433,7 @@
             inputRows.push(buildInputRow(nextAutoLabel(), '', ''));
             renderInputRows();
             var activeSet = engine.getActiveSet();
-            if (activeSet) activeSet.draftRows = inputRows.map(function (row) { return buildInputRow(row.label, row.x, row.y); });
+            if (activeSet) activeSet.draftRows = inputRows.map(function (row) { return buildInputRow(row.label, row.x, row.y, row.id); });
             var rowsContainer = document.getElementById('mfCoordInputRows');
             if (rowsContainer) rowsContainer.scrollTop = rowsContainer.scrollHeight;
           });
@@ -2180,7 +2461,11 @@
               try {
                 var parsed = parsePoints(text);
                 activeSet.points = preservePointStyles(activeSet.points, parsed);
+                activeSet.points.forEach(function (point, index) {
+                  if (inputRows[index] && inputRows[index].id) point.id = inputRows[index].id;
+                });
                 ensurePointOffsets(activeSet);
+                engine.prunePointReferences(activeSet);
               } catch (err) { activeSet.points = []; }
             }
             state.marginUnits = 2;
@@ -2200,6 +2485,98 @@
             renderUI();
           });
         }
+
+        var connectModeBtn = document.getElementById("mfCoordConnectModeBtn");
+        if (connectModeBtn) addListener(connectModeBtn, "click", function () {
+          state.connectionMode = !state.connectionMode;
+          state.connectionStart = null;
+          syncConnectionUI();
+          renderUI();
+        });
+        var cancelConnectionBtn = document.getElementById("mfCoordCancelConnectionBtn");
+        if (cancelConnectionBtn) addListener(cancelConnectionBtn, "click", function () {
+          engine.cancelConnection();
+          syncConnectionUI();
+          renderUI();
+        });
+        var linesVisibleInput = document.getElementById("mfCoordLinesVisible");
+        if (linesVisibleInput) addListener(linesVisibleInput, "change", function () {
+          state.connectionsVisible = linesVisibleInput.checked;
+          renderUI();
+        });
+        var lineColorInput = document.getElementById("mfCoordLineColor");
+        if (lineColorInput) addListener(lineColorInput, "input", function () {
+          state.connectionColor = lineColorInput.value;
+          renderUI();
+        });
+        var lineWidthInput = document.getElementById("mfCoordLineWidth");
+        if (lineWidthInput) addListener(lineWidthInput, "input", function () {
+          state.connectionWidth = Math.max(1, Math.min(12, Number(lineWidthInput.value) || 2));
+          var value = document.getElementById("mfCoordLineWidthVal");
+          if (value) value.textContent = lineWidthInput.value;
+          renderUI();
+        });
+        var lineStyleInput = document.getElementById("mfCoordLineStyle");
+        if (lineStyleInput) addListener(lineStyleInput, "change", function () {
+          state.connectionStyle = normalizeLineStyle(lineStyleInput.value);
+          renderUI();
+        });
+        var clearConnectionsBtn = document.getElementById("mfCoordClearConnectionsBtn");
+        if (clearConnectionsBtn) addListener(clearConnectionsBtn, "click", function () {
+          state.connections = [];
+          state.connectionStart = null;
+          syncConnectionUI();
+          renderUI();
+        });
+        var connectionList = document.getElementById("mfCoordConnectionList");
+        if (connectionList) addListener(connectionList, "click", function (event) {
+          var button = event.target.closest("button[data-connection-id]");
+          if (!button) return;
+          state.connections = state.connections.filter(function (line) { return line.id !== button.dataset.connectionId; });
+          syncConnectionUI();
+          renderUI();
+        });
+        var closeShapeBtn = document.getElementById("mfCoordCloseShapeBtn");
+        if (closeShapeBtn) addListener(closeShapeBtn, "click", function () {
+          var result = engine.closePointSet(engine.getActiveSet());
+          syncConnectionUI();
+          var hint = document.getElementById("mfCoordShapeHint");
+          if (hint) hint.textContent = result.ok ? "Shape closed. Enable Fill to colour its interior." : result.reason;
+          renderUI();
+        });
+        var openShapeBtn = document.getElementById("mfCoordOpenShapeBtn");
+        if (openShapeBtn) addListener(openShapeBtn, "click", function () {
+          var activeSet = engine.getActiveSet();
+          state.closedShapes = state.closedShapes.filter(function (shape) { return !activeSet || shape.setId !== activeSet.id; });
+          syncConnectionUI();
+          var hint = document.getElementById("mfCoordShapeHint");
+          if (hint) hint.textContent = "Shape reopened. Its points and connections remain.";
+          renderUI();
+        });
+        var fillEnabledInput = document.getElementById("mfCoordFillEnabled");
+        if (fillEnabledInput) addListener(fillEnabledInput, "change", function () {
+          state.fillEnabled = fillEnabledInput.checked;
+          renderUI();
+        });
+        var fillColorInput = document.getElementById("mfCoordFillColor");
+        if (fillColorInput) addListener(fillColorInput, "input", function () {
+          state.fillColor = fillColorInput.value;
+          renderUI();
+        });
+        var fillOpacityInput = document.getElementById("mfCoordFillOpacity");
+        if (fillOpacityInput) addListener(fillOpacityInput, "input", function () {
+          state.fillOpacity = Math.max(0, Math.min(1, Number(fillOpacityInput.value) / 100));
+          var value = document.getElementById("mfCoordFillOpacityVal");
+          if (value) value.textContent = fillOpacityInput.value + "%";
+          renderUI();
+        });
+        var noFillBtn = document.getElementById("mfCoordNoFillBtn");
+        if (noFillBtn) addListener(noFillBtn, "click", function () {
+          state.fillEnabled = false;
+          if (fillEnabledInput) fillEnabledInput.checked = false;
+          syncConnectionUI();
+          renderUI();
+        });
 
         // Delegated events for Set Manager & Point Controls
         var setListEl = document.getElementById("mfCoordSetList");
@@ -2229,9 +2606,13 @@
               if (state.pointSets.length <= 1) return;
               var remIdx = state.pointSets.findIndex(function (s) { return s.id === sId; });
               if (remIdx !== -1) {
+                state.connections = state.connections.filter(function (line) { return line.startSetId !== sId && line.endSetId !== sId; });
+                state.closedShapes = state.closedShapes.filter(function (shape) { return shape.setId !== sId; });
+                if (state.connectionStart && state.connectionStart.setId === sId) state.connectionStart = null;
                 state.pointSets.splice(remIdx, 1);
                 state.activeSetId = state.pointSets[Math.max(0, remIdx - 1)].id;
                 syncUIFromActiveSet();
+                syncConnectionUI();
                 renderUI();
               }
             }
@@ -2306,13 +2687,6 @@
 
         // Checkboxes & style inputs in properties panel
         var propMappings = [
-          { id: "mfCoordPolyVisible", key: "polyVisible", isPoly: true },
-          { id: "mfCoordPolyFillVisible", key: "polyFillVisible", isPoly: true },
-          { id: "mfCoordPolyFillColor", key: "polyFillColor", isPoly: true },
-          { id: "mfCoordPolyFillOpacity", key: "polyFillOpacity", isPoly: true },
-          { id: "mfCoordPolyBorderVisible", key: "polyBorderVisible", isPoly: true },
-          { id: "mfCoordPolyBorderColor", key: "polyBorderColor", isPoly: true },
-          { id: "mfCoordPolyBorderWidth", key: "polyBorderWidth", isPoly: true },
           { id: "mfCoordShowDiagonals", key: "diagVisible", isDiag: true },
           { id: "mfCoordDiagColor", key: "diagColor", isDiag: true },
           { id: "mfCoordDiagWidth", key: "diagWidth", isDiag: true },
@@ -2336,24 +2710,7 @@
           var evtType = (el.type === "checkbox" || el.tagName === "SELECT") ? "change" : "input";
           addListener(el, evtType, function () {
             var activeSet = engine.getActiveSet();
-            if (m.isPoly && activeSet && activeSet.renderOptions) {
-              var poly = activeSet.renderOptions.polygon;
-              if (m.id === "mfCoordPolyVisible") poly.visible = el.checked;
-              if (m.id === "mfCoordPolyFillVisible") poly.fillVisible = el.checked;
-              if (m.id === "mfCoordPolyFillColor") poly.fillColor = el.value;
-              if (m.id === "mfCoordPolyFillOpacity") {
-                poly.fillOpacity = Number(el.value) / 100;
-                var valEl = document.getElementById("mfCoordPolyFillOpacityVal");
-                if (valEl) valEl.textContent = el.value + "%";
-              }
-              if (m.id === "mfCoordPolyBorderVisible") poly.borderVisible = el.checked;
-              if (m.id === "mfCoordPolyBorderColor") poly.borderColor = el.value;
-              if (m.id === "mfCoordPolyBorderWidth") {
-                poly.borderWidth = Number(el.value) || 3;
-                var bVal = document.getElementById("mfCoordPolyBorderWidthVal");
-                if (bVal) bVal.textContent = el.value;
-              }
-            } else if (m.isDiag && activeSet && activeSet.renderOptions) {
+            if (m.isDiag && activeSet && activeSet.renderOptions) {
               var diag = activeSet.renderOptions.diagonals;
               if (m.id === "mfCoordShowDiagonals") diag.visible = el.checked;
               if (m.id === "mfCoordDiagColor") diag.color = el.value;
@@ -2455,6 +2812,69 @@
             state[k] = savedState[k];
           }
         }
+        state.connections = Array.isArray(state.connections) ? state.connections : [];
+        state.connectionsVisible = savedState.connectionsVisible === undefined ? true : savedState.connectionsVisible !== false;
+        state.connectionColor = /^#[0-9a-fA-F]{6}$/.test(state.connectionColor || "") ? state.connectionColor : DEFAULT_CONNECTION_COLOR;
+        state.connectionWidth = Math.max(1, Math.min(12, Number(state.connectionWidth) || 2));
+        state.connectionStyle = normalizeLineStyle(state.connectionStyle || "solid");
+        state.closedShapes = Array.isArray(state.closedShapes) ? state.closedShapes : [];
+        state.fillEnabled = savedState.fillEnabled === undefined ? false : Boolean(state.fillEnabled);
+        state.fillColor = /^#[0-9a-fA-F]{6}$/.test(state.fillColor || "") ? state.fillColor : DEFAULT_FILL_COLOR;
+        state.fillOpacity = savedState.fillOpacity === undefined ? 0.18 : Math.max(0, Math.min(1, Number(state.fillOpacity) || 0));
+        state.connectionMode = false;
+        state.connectionStart = null;
+        state.pointSets = Array.isArray(state.pointSets) ? state.pointSets : [];
+        (state.pointSets || []).forEach(function (set) {
+          set.id = set.id || makeSetId();
+          set.points = Array.isArray(set.points) ? set.points : [];
+          if (set.inputText && set.inputText.trim()) {
+            try { set.points = preservePointStyles(set.points, parsePoints(set.inputText)); } catch (ignoreParse) { /* keep saved points */ }
+          }
+          set.points.forEach(function (point) { if (!point.id) point.id = makePointId(); });
+          set.renderOptions = set.renderOptions || defaultRenderOptions();
+          set.renderOptions.polygon = Object.assign(defaultRenderOptions().polygon, set.renderOptions.polygon || {});
+          set.renderOptions.diagonals = Object.assign(defaultRenderOptions().diagonals, set.renderOptions.diagonals || {});
+          ensurePointOffsets(set);
+        });
+        if (!state.pointSets.length) {
+          var emptySet = engine.buildSet("Set 1", "");
+          state.pointSets.push(emptySet);
+          state.activeSetId = emptySet.id;
+        }
+        // Older v1 projects represented a closed polygon through per-set render options.
+        // Convert that saved intent once into stable point-ID shape data, then turn off
+        // the legacy auto-polygon path so future points remain independent.
+        if (!Array.isArray(savedState.closedShapes)) {
+          (state.pointSets || []).forEach(function (set) {
+            var polygon = set.renderOptions && set.renderOptions.polygon;
+            if (polygon && polygon.visible && set.points.length >= 3) {
+              var legacyShape = { id: makeShapeId(), setId: set.id, pointIds: set.points.map(function (point) { return point.id; }) };
+              state.closedShapes.push(legacyShape);
+              if (savedState.fillEnabled === undefined && polygon.fillVisible !== false) state.fillEnabled = true;
+              if (savedState.fillColor === undefined && polygon.fillColor) state.fillColor = polygon.fillColor;
+              if (savedState.fillOpacity === undefined && Number.isFinite(Number(polygon.fillOpacity))) state.fillOpacity = Math.max(0, Math.min(1, Number(polygon.fillOpacity)));
+              polygon.visible = false;
+              polygon.fillVisible = false;
+            }
+          });
+        }
+        state.connections = state.connections.filter(function (line) {
+          if (!line || !line.startPointId || !line.endPointId) return false;
+          return findPointByRef(state.pointSets, line.startSetId || line.setId, line.startPointId) &&
+            findPointByRef(state.pointSets, line.endSetId || line.setId, line.endPointId);
+        }).map(function (line) {
+          line.startSetId = line.startSetId || line.setId;
+          line.endSetId = line.endSetId || line.setId;
+          line.id = line.id || makeConnectionId();
+          return line;
+        });
+        state.closedShapes = state.closedShapes.filter(function (shape) {
+          var set = (state.pointSets || []).find(function (item) { return item.id === shape.setId; });
+          if (!set) return false;
+          shape.pointIds = (shape.pointIds || []).filter(function (id) { return set.points.some(function (point) { return point.id === id; }); });
+          shape.id = shape.id || makeShapeId();
+          return new Set(shape.pointIds).size >= 3;
+        });
         state.fontSizePt = Math.max(6, Math.min(36, Number(state.fontSizePt) || 11));
         state.bold = Boolean(state.bold);
         if (window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState) {

@@ -15,6 +15,8 @@ function fakeIndexedDb(options = {}) {
   let storeInitialized = false;
   let activeWrites = 0;
   let maxActiveWrites = 0;
+  let transactionId = 0;
+  const transactionEvents = [];
 
   function makeDatabase(hasStore) {
     const db = {
@@ -34,27 +36,74 @@ function fakeIndexedDb(options = {}) {
           throw error;
         }
         if (!hasStore || storeName !== "projects") throw new Error("Object store missing");
+        const id = ++transactionId;
+        let pendingRequests = 0;
+        let setupComplete = false;
+        let completionScheduled = false;
+        let completed = false;
+        const pendingWrites = new Map();
+        function maybeComplete() {
+          if (!setupComplete || pendingRequests || completionScheduled || completed) return;
+          completionScheduled = true;
+          setTimeout(() => {
+            completionScheduled = false;
+            if (pendingRequests || completed) return;
+            completed = true;
+            if (mode === "readwrite") {
+              pendingWrites.forEach((value, key) => records.set(key, value));
+              activeWrites -= 1;
+            }
+            transactionEvents.push(`transaction-complete:${id}:${mode}`);
+            if (tx.oncomplete) tx.oncomplete();
+          }, options.transactionDelay == null ? 2 : options.transactionDelay);
+        }
+        function queueRequest(kind, detail, populateRequest) {
+          const request = {};
+          pendingRequests += 1;
+          setTimeout(() => {
+            populateRequest(request);
+            transactionEvents.push(`request-success:${id}:${kind}:${detail}`);
+            if (request.onsuccess) request.onsuccess();
+            pendingRequests -= 1;
+            maybeComplete();
+          }, 0);
+          return request;
+        }
         const tx = { error: null, objectStore(requestedStore) {
           if (requestedStore !== "projects") throw new Error("Wrong store");
           return {
-            put(value) { records.set(value.id, JSON.parse(JSON.stringify(value))); },
+            put(value) {
+              pendingWrites.set(value.id, JSON.parse(JSON.stringify(value)));
+              return queueRequest("put", value.id, () => {});
+            },
             get(id) {
-              const request = {};
-              setTimeout(() => { request.result = records.has(id) ? JSON.parse(JSON.stringify(records.get(id))) : undefined; if (request.onsuccess) request.onsuccess(); }, 0);
-              return request;
+              return queueRequest("get", id, (request) => {
+                const value = pendingWrites.has(id) ? pendingWrites.get(id) : records.get(id);
+                request.result = value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+              });
             },
             getAll() {
-              const request = {};
-              setTimeout(() => { request.result = Array.from(records.values()).map((value) => JSON.parse(JSON.stringify(value))); if (request.onsuccess) request.onsuccess(); }, 0);
-              return request;
+              return queueRequest("getAll", "", (request) => {
+                const all = new Map(records);
+                pendingWrites.forEach((value, key) => all.set(key, value));
+                request.result = Array.from(all.values()).map((value) => JSON.parse(JSON.stringify(value)));
+              });
             }
           };
-        }, abort() { tx.error = new Error("aborted"); setTimeout(() => tx.onabort && tx.onabort(), 0); } };
+        }, abort() {
+          tx.error = new Error("aborted");
+          setTimeout(() => {
+            if (completed) return;
+            completed = true;
+            if (mode === "readwrite") activeWrites -= 1;
+            if (tx.onabort) tx.onabort();
+          }, 0);
+        } };
         if (mode === "readwrite") { activeWrites += 1; maxActiveWrites = Math.max(activeWrites, maxActiveWrites); }
-        setTimeout(() => {
-          if (mode === "readwrite") activeWrites -= 1;
-          if (tx.oncomplete) tx.oncomplete();
-        }, options.transactionDelay == null ? 2 : options.transactionDelay);
+        queueMicrotask(() => {
+          setupComplete = true;
+          maybeComplete();
+        });
         return tx;
       }
     };
@@ -87,7 +136,8 @@ function fakeIndexedDb(options = {}) {
     get opens() { return opens; },
     get connections() { return connections; },
     get records() { return records; },
-    get maxActiveWrites() { return maxActiveWrites; }
+    get maxActiveWrites() { return maxActiveWrites; },
+    get transactionEvents() { return transactionEvents; }
   };
 }
 
@@ -116,7 +166,14 @@ test("project and autosave recovery copy are committed together and can be reope
     graphDesignSettings: { axisScale: { x: { k: 5, n: 1 }, y: { k: 2, n: 5 } } }
   };
   const recovery = { ...project, id: "mathforge-autosave", sourceId: project.id };
+  const eventStart = fake.transactionEvents.length;
   await store.putMany([project, recovery]);
+  const writeEvents = fake.transactionEvents.slice(eventStart);
+  assert.deepEqual(writeEvents, [
+    "request-success:1:put:project-1",
+    "request-success:1:put:mathforge-autosave",
+    "transaction-complete:1:readwrite"
+  ]);
   assert.deepEqual(JSON.parse(JSON.stringify(await store.get(project.id))), project);
   assert.deepEqual(JSON.parse(JSON.stringify(await store.get("mathforge-autosave"))), recovery);
   assert.equal((await store.getAll()).length, 2);

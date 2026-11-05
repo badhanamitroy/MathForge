@@ -1,0 +1,20 @@
+[build]
+command = "node scripts/prepare-vercel.mjs"
+publish = "dist"
+
+[[redirects]]
+from = "/open-project"
+to = "/index.html"
+status = 200
+
+[[headers]]
+for = "/service-worker.js"
+  [headers.values]
+  Content-Type = "application/javascript; charset=utf-8"
+  Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+for = "/manifest.webmanifest"
+  [headers.values]
+  Content-Type = "application/manifest+json; charset=utf-8"
+  Cache-Control = "no-cache, must-revalidate"

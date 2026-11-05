@@ -315,7 +315,7 @@
     const typography = window.MathForgeGraphTypography;
     const axisFont = typography
       ? typography.font(fontSize, options.typography)
-      : fontSize + 'px "Times New Roman", "Kalpurush", serif';
+      : fontSize + 'px "Times New Roman", "Noto Sans Bengali", serif';
 
     function drawTip(x, y, dx, dy){
       const baseX = x - dx * arrowSize;
@@ -438,7 +438,7 @@
     ctx.fillStyle = sharedDesign ? sharedDesign.fontColor : "#000";
     ctx.strokeStyle = sharedDesign ? sharedDesign.axisColor : "#000";
     const typography = window.MathForgeGraphTypography;
-    ctx.font = typography ? typography.font(fonts.ticks, fonts.typography) : `${fonts.ticks}px "Times New Roman", "Kalpurush", serif`;
+    ctx.font = typography ? typography.font(fonts.ticks, fonts.typography) : `${fonts.ticks}px "Times New Roman", "Noto Sans Bengali", serif`;
     ctx.globalAlpha = 0.95;
 
     for(let y=0; y<=yMax; y+=st){
@@ -468,7 +468,7 @@
     ctx.fillStyle = sharedDesign ? sharedDesign.fontColor : "#000";
     ctx.strokeStyle = sharedDesign ? sharedDesign.axisColor : "#000";
     const typography = window.MathForgeGraphTypography;
-    ctx.font = typography ? typography.font(fonts.ticks, fonts.typography) : `${fonts.ticks}px "Times New Roman", "Kalpurush", serif`;
+    ctx.font = typography ? typography.font(fonts.ticks, fonts.typography) : `${fonts.ticks}px "Times New Roman", "Noto Sans Bengali", serif`;
     ctx.globalAlpha = 0.95;
 
     const tickLen = 6;
@@ -514,7 +514,7 @@
     ctx.fillStyle = sharedDesign ? sharedDesign.fontColor : "#000";
     ctx.globalAlpha = 0.95;
     const typography = window.MathForgeGraphTypography;
-    ctx.font = typography ? typography.font(size, annotation.typography) : `${size}px "Times New Roman", "Kalpurush", serif`;
+    ctx.font = typography ? typography.font(size, annotation.typography) : `${size}px "Times New Roman", "Noto Sans Bengali", serif`;
 
     ctx.textAlign = "center";
     ctx.textBaseline = "top";

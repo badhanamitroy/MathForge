@@ -175,18 +175,19 @@ test("Pie Chart export uses the active engine SVG instead of the Cartesian canva
   assert.match(harness.elements.get("mfStorageNotice").textContent, /SVG export started/);
 });
 
-test("Equation Plotter state saves and reopens in the unchanged version-1 toolStates map", async () => {
+test("Equation Plotter state with repositioned point coordinates saves and reopens in version 1", async () => {
   const harness = managerHarness();
   await harness.manager.ready;
   const equationState = {
     equations: [{ id: "line", label: "Line", expression: "y=2x+3", color: "#2563eb", visible: true },
       { id: "circle", label: "Circle", expression: "x^2+y^2=25", color: "#dc2626", visible: false }],
-    points: [{ id: "p-a", label: "A", x: "2", y: "3", visible: true }], zoom: 1.4, panX: 12, panY: -8, lineWidth: 2.5, cleared: false
+    points: [{ id: "p-a", label: "A", x: "0.8", y: "4", visible: true }], zoom: 1.4, panX: 12, panY: -8, lineWidth: 2.5, cleared: false
   };
   harness.setWorkspaceState("equation-plotter", { "equation-plotter": equationState });
   await harness.manager.save(true);
   const saved = Array.from(harness.stored.values()).find((project) => project.activeTool === "equation-plotter");
   assert.equal(saved.version, 1);
+  assert.deepEqual(saved.toolStates["equation-plotter"].points[0], { id: "p-a", label: "A", x: "0.8", y: "4", visible: true });
   assert.deepEqual(saved.toolStates["equation-plotter"], equationState);
   assert.equal(await harness.manager.loadProjectText(JSON.stringify(saved), "Equations.mathforge", null), true);
   assert.deepEqual(harness.getToolStates()["equation-plotter"], equationState);

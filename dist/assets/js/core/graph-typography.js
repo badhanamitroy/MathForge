@@ -2,7 +2,26 @@
   "use strict";
 
   var DEFAULT_SIZE_PT = 11;
-  var FONT_FAMILY = '"Times New Roman", "Kalpurush", serif';
+  var FONT_FAMILY = '"Times New Roman", "Noto Sans Bengali", serif';
+  var fontReadyPromise = null;
+
+  function ensureFontLoaded() {
+    if (!window.document || !document.fonts || typeof document.fonts.load !== "function") return Promise.resolve([]);
+    if (!fontReadyPromise) {
+      try {
+        fontReadyPromise = document.fonts.load('11px "Noto Sans Bengali"', "বাংলা ০১২৩").catch(function () { return []; });
+      } catch (ignore) {
+        fontReadyPromise = Promise.resolve([]);
+      }
+    }
+    return fontReadyPromise;
+  }
+
+  function familyStack(family) {
+    return family === "Noto Sans Bengali"
+      ? '"Noto Sans Bengali", "Times New Roman", serif'
+      : FONT_FAMILY;
+  }
 
   function read(sizeInput, boldInput, familyInput, colorInput) {
     var shared = window.MathForgeGraphDesignSettings && window.MathForgeGraphDesignSettings.getState
@@ -12,8 +31,7 @@
     return {
       fontSizePt: Math.max(6, Math.min(36, size)),
       bold: shared ? Boolean(shared.bold) : Boolean(boldInput && boldInput.checked),
-      fontFamily: (shared ? shared.fontFamily : familyInput && familyInput.value) === "Kalpurush"
-        ? '"Kalpurush", "Times New Roman", serif' : FONT_FAMILY,
+      fontFamily: familyStack(shared ? shared.fontFamily : familyInput && familyInput.value),
       fontColor: shared && /^#[0-9a-f]{6}$/i.test(shared.fontColor) ? shared.fontColor
         : colorInput && /^#[0-9a-f]{6}$/i.test(colorInput.value) ? colorInput.value : "#111827"
     };
@@ -78,10 +96,13 @@
   window.MathForgeGraphTypography = Object.freeze({
     defaultSizePt: DEFAULT_SIZE_PT,
     fontFamily: FONT_FAMILY,
+    familyStack: familyStack,
+    ensureFontLoaded: ensureFontLoaded,
     read: read,
     sizePx: sizePx,
     scaledSizePx: scaledSizePx,
     font: font,
     ensureControls: ensureControls
   });
+  ensureFontLoaded();
 })(window);

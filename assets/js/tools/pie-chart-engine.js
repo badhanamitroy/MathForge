@@ -92,6 +92,12 @@
       : { background: "#ffffff", fontFamily: "Times New Roman", fontSizePt: 11, bold: false, fontColor: "#111827", lineColor: "#ffffff", lineWidth: 1 };
   }
 
+  function graphFontStack(design) {
+    return window.MathForgeGraphTypography && window.MathForgeGraphTypography.familyStack
+      ? window.MathForgeGraphTypography.familyStack(design && design.fontFamily)
+      : '"Times New Roman", "Noto Sans Bengali", serif';
+  }
+
   function categoryById(id) {
     for (var i = 0; i < state.categories.length; i++) {
       if (state.categories[i].id === id) return state.categories[i];
@@ -187,7 +193,7 @@
     var innerRadius = state.mode === "donut" ? radius * Math.max(0.35, Math.min(0.72, Number(state.holeRatio) || 0.58)) : 0;
     var sepColor = /^#[0-9a-f]{6}$/i.test(design.lineColor) ? design.lineColor : "#ffffff";
     var sepWidth = Math.max(0.6, Math.min(4, Number(design.lineWidth) * 0.42 || 1));
-    var fontFamily = escapeHtml(design.fontFamily || "Times New Roman");
+    var fontFamily = escapeHtml(graphFontStack(design));
     var title = escapeHtml(state.title || "Pie Chart");
     function fitTextSize(text, requested, maxWidth) {
       return Math.max(8, Math.min(requested, maxWidth / Math.max(1, String(text).length * 0.62)));
@@ -283,7 +289,7 @@
     var design = currentDesign();
     root.style.setProperty("--pie-background", design.background || "#ffffff");
     root.style.setProperty("--pie-font-color", design.fontColor || "#111827");
-    root.style.setProperty("--pie-font-family", '"' + (design.fontFamily || "Times New Roman") + '", serif');
+    root.style.setProperty("--pie-font-family", graphFontStack(design));
     root.style.setProperty("--pie-font-size", (Number(design.fontSizePt) || 11) + "pt");
     root.style.setProperty("--pie-font-weight", design.bold ? "700" : "600");
   }
@@ -645,15 +651,40 @@
   function svgMarkupForExport() {
     if (!state.showChart) throw new Error("The Pie / Donut Chart section is hidden. Enable it in Graph Designs to export the chart.");
     if (!lastValidModel) throw new Error("Enter at least two positive values before exporting the chart.");
-    return buildSvg(lastValidModel, true);
+    return Promise.resolve(window.MathForgeGraphTypography && window.MathForgeGraphTypography.ensureFontLoaded
+      ? window.MathForgeGraphTypography.ensureFontLoaded() : null).then(function () {
+      var markup = buildSvg(lastValidModel, true);
+      if (!window.fetch || !window.btoa) return markup;
+      var fontUrl = new URL("assets/fonts/NotoSansBengali-VF.ttf", document.baseURI).href;
+      return fetch(fontUrl).then(function (response) {
+        if (!response.ok) throw new Error("Noto Sans Bengali could not be loaded for SVG export.");
+        return response.arrayBuffer();
+      }).then(function (buffer) {
+        var bytes = new Uint8Array(buffer);
+        var binary = "";
+        var chunkSize = 0x8000;
+        for (var offset = 0; offset < bytes.length; offset += chunkSize) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
+        }
+        var dataUri = "data:font/ttf;base64," + btoa(binary);
+        var style = '<style>@font-face{font-family:"Noto Sans Bengali";src:url("' + dataUri + '") format("truetype");font-style:normal;font-weight:100 900;font-stretch:62.5% 100%;}</style>';
+        return markup.replace(/(<svg\b[^>]*>)/, "$1" + style);
+      }).catch(function () {
+        // Direct file:// use can block fetch; the on-screen document still uses
+        // its local @font-face and the SVG keeps a useful local/system fallback.
+        return markup;
+      });
+    });
   }
 
   function exportChart(format) {
     format = format || "png";
-    var markup = svgMarkupForExport();
-    if (format === "svg") return new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
-    if (format !== "png") throw new Error("Choose PNG or SVG.");
-    return new Promise(function (resolve, reject) {
+    if (!state.showChart) throw new Error("The Pie / Donut Chart section is hidden. Enable it in Graph Designs to export the chart.");
+    if (!lastValidModel) throw new Error("Enter at least two positive values before exporting the chart.");
+    if (format !== "png" && format !== "svg") throw new Error("Choose PNG or SVG.");
+    return svgMarkupForExport().then(function (markup) {
+      if (format === "svg") return new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
+      return new Promise(function (resolve, reject) {
       var svgBlob = new Blob([markup], { type: "image/svg+xml;charset=utf-8" });
       var objectUrl = URL.createObjectURL(svgBlob);
       var image = new Image();
@@ -679,6 +710,7 @@
       };
       image.onerror = function () { URL.revokeObjectURL(objectUrl); reject(new Error("The chart SVG could not be rendered for PNG export.")); };
       image.src = objectUrl;
+      });
     });
   }
 

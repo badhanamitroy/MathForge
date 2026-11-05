@@ -127,14 +127,19 @@ test("shared typography and colors update without recursively redispatching cont
   const { settings, elements } = makeHarness();
   elements.get("mfGraphFontSizePt").value = "13";
   elements.get("mfGraphFontSizePt").fire("input");
-  elements.get("mfGraphFontFamily").value = "Kalpurush";
+  elements.get("mfGraphFontFamily").value = "Noto Sans Bengali";
   elements.get("mfGraphFontFamily").fire("change");
   elements.get("mfGraphFontColor").value = "#123456";
   elements.get("mfGraphFontColor").fire("input");
   const current = settings.getState();
   assert.equal(current.fontSizePt, 13);
-  assert.equal(current.fontFamily, "Kalpurush");
+  assert.equal(current.fontFamily, "Noto Sans Bengali");
   assert.equal(current.fontColor, "#123456");
+});
+
+test("older projects that saved Kalpurush migrate to Noto Sans Bengali", () => {
+  const { settings } = makeHarness();
+  assert.equal(settings.sanitize({ fontFamily: "Kalpurush" }).fontFamily, "Noto Sans Bengali");
 });
 
 test("font size entry preserves typed values and applies 10, 11, 12, 14, 16, 18, and decimals exactly", () => {

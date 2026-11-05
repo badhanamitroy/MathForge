@@ -16,7 +16,7 @@ function loadCalculations() {
   return window.MathForgePieCalculations;
 }
 
-function loadPieEngine() {
+function loadPieEngine(options = {}) {
   const calculations = loadCalculations();
   let adapter;
   function fakeNode() {
@@ -33,6 +33,7 @@ function loadPieEngine() {
   const document = {
     getElementById(id) { return nodes[id] || null; },
     addEventListener() {}, removeEventListener() {}, activeElement: null,
+    baseURI: "http://mathforge.test/",
     createElement(tag) {
       if (tag === "div") return fakeNode();
       if (tag !== "canvas") throw new Error("Unexpected element " + tag);
@@ -50,15 +51,26 @@ function loadPieEngine() {
       return { documentElement: { getAttribute(name) { const match = svgTag.match(new RegExp(name + '="(\\d+)"')); return match && match[1]; } } };
     }
   }
-  const url = { createObjectURL() { return "blob:pie-chart"; }, revokeObjectURL() {} };
+  class MockURL extends URL {}
+  MockURL.createObjectURL = function () { return "blob:pie-chart"; };
+  MockURL.revokeObjectURL = function () {};
+  const fontBytes = fs.readFileSync(path.join(root, "assets/fonts/NotoSansBengali-VF.ttf"));
+  const fetchFont = options.includeFontData ? function () {
+    return Promise.resolve({ ok: true, arrayBuffer() {
+      return Promise.resolve(fontBytes.buffer.slice(fontBytes.byteOffset, fontBytes.byteOffset + fontBytes.byteLength));
+    } });
+  } : undefined;
   const window = {
     MathForgePieCalculations: calculations,
     MathForgeWorkspace: { registerTool(value) { adapter = value; } },
+    MathForgeGraphTypography: { familyStack() { return '"Times New Roman", "Noto Sans Bengali", serif'; }, ensureFontLoaded() { return Promise.resolve([]); } },
+    fetch: fetchFont,
+    btoa,
     MathForgeGraphDesignSettings: {
       getState() { return { background: "#ffffff", fontFamily: "Times New Roman", fontSizePt: 11, bold: false, fontColor: "#111827", lineColor: "#ffffff", lineWidth: 1 }; }
     }
   };
-  vm.runInNewContext(engineSource, { window, document, Date, Math, Number, String, Object, Array, JSON, Blob, Promise, Image: MockImage, DOMParser: MockDOMParser, URL: url }, { filename: "pie-chart-engine.js" });
+  vm.runInNewContext(engineSource, { window, document, Date, Math, Number, String, Object, Array, JSON, Blob, Promise, Image: MockImage, DOMParser: MockDOMParser, URL: MockURL, Uint8Array, btoa, fetch: fetchFont }, { filename: "pie-chart-engine.js" });
   return { adapter, window, calculations, nodes, fakeNode };
 }
 
@@ -133,10 +145,22 @@ test("native Pie tool renders accessible pie/donut SVG exports and supports more
   assert.match(markup, /Category 11/);
   assert.match(markup, /tabindex="0" focusable="true" role="img" aria-label=/);
   assert.match(markup, /class="pie-percent-label"/);
-  assert.match(markup, /font-family="Times New Roman"/);
+  assert.match(markup, /font-family="&quot;Times New Roman&quot;.*Noto Sans Bengali/);
+  assert.match(markup, /Noto Sans Bengali/);
   assert.match(markup, />66\.01<\/text>/, "donut total is present in the center");
   assert.doesNotMatch(markup, /<iframe|axis|grid/);
   assert.match(adapter.getState().categories[8].color, /^#[0-9a-f]{6}$/i, "categories beyond the initial palette receive a deterministic color");
+});
+
+test("Pie SVG export embeds the bundled Noto font for portable Bengali typography", async () => {
+  const { adapter } = loadPieEngine({ includeFontData: true });
+  adapter.setState(validPieState({ title: "বাংলা ফল", numerals: "bn" }));
+  adapter.render();
+  const markup = await (await adapter.export("svg")).text();
+  assert.match(markup, /@font-face/);
+  assert.match(markup, /font-family:"Noto Sans Bengali"/);
+  assert.match(markup, /data:font\/ttf;base64,/);
+  assert.match(markup, /বাংলা ফল/);
 });
 
 test("Pie mode omits a donut center and duplicate restored category IDs are repaired", async () => {

@@ -9,6 +9,91 @@ const vm = require("node:vm");
 const root = path.resolve(__dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
+function serviceWorkerAssets() {
+  const worker = read("service-worker.js");
+  const match = worker.match(/var APP_ASSETS\s*=\s*\[([\s\S]*?)\];/);
+  assert.ok(match, "service worker must declare APP_ASSETS");
+  return Array.from(match[1].matchAll(/["']([^"']+)["']/g), (entry) => entry[1]);
+}
+
+function resolveLocalAsset(reference, ownerFile) {
+  const value = String(reference || "").trim();
+  if (!value || /^(?:data:|blob:|javascript:|mailto:|tel:|#)/i.test(value)) return null;
+  const ownerUrl = new URL(ownerFile, "https://mathforge.test/");
+  const resolved = new URL(value, ownerUrl);
+  if (resolved.origin !== ownerUrl.origin) return null;
+  return decodeURIComponent(resolved.pathname.replace(/^\//, ""));
+}
+
+function htmlAssetReferences(html, htmlFile) {
+  const references = new Set();
+  const add = (raw) => {
+    const resolved = resolveLocalAsset(raw, htmlFile);
+    if (resolved) references.add(resolved);
+  };
+  const tags = html.matchAll(/<(script|link|img|source|video|audio)\b([^>]*)>/gi);
+  for (const [, tagName, attributesText] of tags) {
+    const attributes = Object.fromEntries(Array.from(attributesText.matchAll(/([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g),
+      ([, name, doubleQuoted, singleQuoted, unquoted]) => [name.toLowerCase(), doubleQuoted ?? singleQuoted ?? unquoted ?? ""]));
+    const tag = tagName.toLowerCase();
+    if (tag === "script" || tag === "img" || tag === "source" || tag === "video" || tag === "audio") {
+      if (attributes.src) add(attributes.src);
+    }
+    if (tag === "video" && attributes.poster) add(attributes.poster);
+    if (tag === "link" && /(?:stylesheet|manifest|icon|preload)/i.test(attributes.rel || "")) {
+      if (attributes.href) add(attributes.href);
+    }
+    if (attributes.style) {
+      for (const raw of cssAssetReferences(attributes.style)) add(raw);
+    }
+  }
+  for (const [, inlineCss] of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
+    for (const raw of cssAssetReferences(inlineCss)) add(raw);
+  }
+  return references;
+}
+
+function cssAssetReferences(css) {
+  const references = [];
+  for (const [, doubleQuoted, singleQuoted, bare] of css.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi)) {
+    references.push((doubleQuoted ?? singleQuoted ?? bare ?? "").trim());
+  }
+  for (const [, imported] of css.matchAll(/@import\s+["']([^"']+)["']/gi)) references.push(imported.trim());
+  return references;
+}
+
+function runtimeAssetReferences() {
+  const references = new Set();
+  const pendingHtml = ["index.html", "Coordinates_graph.html", "Equation.html", "Ogiveline.html", "Polygonal.html"];
+  const visitedCss = new Set();
+  while (pendingHtml.length) {
+    const htmlFile = pendingHtml.pop();
+    for (const asset of htmlAssetReferences(read(htmlFile), htmlFile)) references.add(asset);
+  }
+  const pendingCss = Array.from(references).filter((asset) => asset.toLowerCase().endsWith(".css"));
+  while (pendingCss.length) {
+    const cssFile = pendingCss.pop();
+    if (visitedCss.has(cssFile)) continue;
+    visitedCss.add(cssFile);
+    const css = read(cssFile);
+    for (const raw of cssAssetReferences(css)) {
+      const asset = resolveLocalAsset(raw, cssFile);
+      if (!asset) continue;
+      references.add(asset);
+      if (asset.toLowerCase().endsWith(".css")) pendingCss.push(asset);
+    }
+  }
+  const manifestPath = "manifest.webmanifest";
+  if (references.has(manifestPath)) {
+    const manifest = JSON.parse(read(manifestPath));
+    for (const icon of manifest.icons || []) {
+      const asset = resolveLocalAsset(icon.src, manifestPath);
+      if (asset) references.add(asset);
+    }
+  }
+  return references;
+}
+
 test("manifest declares the existing JSON .mathforge project type and in-scope route", () => {
   const manifest = JSON.parse(read("manifest.webmanifest"));
   const handler = manifest.file_handlers[0];
@@ -234,6 +319,18 @@ test("offline shell includes local app assets but never project files", () => {
   assert.match(worker, /MATHFORGE_PWA_BASE/);
   assert.doesNotMatch(worker, /\.mathforge/);
   assert.doesNotMatch(worker, /cache\.put\(/);
+  assert.match(worker, /CACHE_NAME\s*=\s*"mathforge-shell-v11"/);
+  assert.match(worker, /"assets\/fonts\/NotoSansBengali-VF\.ttf"/);
+  assert.doesNotMatch(worker, /assets\/fonts\/kalpurush\.ttf/);
+  const assets = serviceWorkerAssets();
+  for (const asset of assets) {
+    assert.ok(fs.existsSync(path.join(root, asset)), `precache asset does not exist: ${asset}`);
+  }
+  assert.ok(assets.includes("assets/js/tools/equation-plotter-engine.js"), "Equation engine is explicitly precached");
+  assert.ok(assets.includes("assets/js/tools/ogive-engine.js"), "Ogive engine is explicitly precached");
+  assert.ok(assets.includes("assets/js/tools/histogram-engine.js"), "Histogram engine is explicitly precached");
+  assert.ok(assets.includes("assets/js/tools/pie-chart-engine.js"), "Pie engine is explicitly precached");
+  assert.ok(assets.includes("assets/js/tools/coordinates-tool.js"), "Coordinates engine is explicitly precached");
   const manifest = JSON.parse(read("manifest.webmanifest"));
   for (const icon of manifest.icons) {
     const bytes = fs.readFileSync(path.join(root, icon.src));
@@ -241,6 +338,15 @@ test("offline shell includes local app assets but never project files", () => {
     assert.equal(bytes.readUInt32BE(16), Number(icon.sizes.split("x")[0]));
     assert.equal(bytes.readUInt32BE(20), Number(icon.sizes.split("x")[1]));
   }
+});
+
+test("precache covers every local asset referenced by workspace and standalone HTML/CSS", () => {
+  const cached = new Set(serviceWorkerAssets());
+  const referenced = runtimeAssetReferences();
+  const missing = Array.from(referenced).filter((asset) => !cached.has(asset)).sort();
+  assert.deepEqual(missing, [], missing.length
+    ? `Local runtime assets referenced by HTML/CSS/manifest but missing from APP_ASSETS:\n${missing.map((asset) => ` - ${asset}`).join("\n")}`
+    : undefined);
 });
 
 test("service worker serves the dedicated file route and cached app shell while offline", async () => {
