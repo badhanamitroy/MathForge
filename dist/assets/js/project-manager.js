@@ -1,20 +1,20 @@
 (function (window, document) {
   "use strict";
 
-  var DB_NAME = "MathForgeProjects";
-  var DB_VERSION = 1;
-  var STORE_NAME = "projects";
   var AUTOSAVE_ID = "mathforge-autosave";
   var PROJECT_MIME_TYPE = "application/json";
-  var TOOL_IDS = ["coordinates-graph", "equation-plotter", "ogive-curve", "histogram-polygon"];
+  var TOOL_IDS = ["coordinates-graph", "equation-plotter", "ogive-curve", "histogram-polygon", "pie-chart"];
   var currentId = newProjectId();
   var currentName = "Untitled Project";
-  var dbPromise = null;
+  var projectStorage = window.MathForgeProjectStorage;
   var saveTimer = null;
   var historyTimer = null;
   var isRestoring = false;
   var allowUnload = false;
   var hasUserInteracted = false;
+  var pendingSaveOperations = 0;
+  var lifecycleSaveKey = null;
+  var saveOperationQueue = Promise.resolve();
   var persistedKey = null;
   var lastHistoryProject = null;
   var lastHistoryKey = null;
@@ -28,39 +28,31 @@
 
   function setNotice(message, isError) {
     var notice = document.getElementById("mfStorageNotice");
-    var status = document.getElementById("mfStatusMessage");
     if (notice) {
       notice.textContent = message;
       notice.classList.toggle("mf-storage-error", Boolean(isError));
     }
-    if (status) status.textContent = message;
+  }
+
+  function beginSave(status) {
+    pendingSaveOperations += 1;
+    setNotice(status || "Saving...", false);
+  }
+
+  function finishSave(status, isError) {
+    pendingSaveOperations = Math.max(0, pendingSaveOperations - 1);
+    if (pendingSaveOperations === 0) setNotice(status, isError);
+  }
+
+  function enqueueSaveOperation(operation) {
+    var result = saveOperationQueue.then(operation);
+    saveOperationQueue = result.then(function () {}, function () {});
+    return result;
   }
 
   function openDatabase() {
-    if (!window.indexedDB) return Promise.reject(new Error("IndexedDB is unavailable in this browser context."));
-    if (!dbPromise) {
-      dbPromise = new Promise(function (resolve, reject) {
-        var request;
-        try {
-          request = window.indexedDB.open(DB_NAME, DB_VERSION);
-        } catch (error) {
-          reject(error);
-          return;
-        }
-        request.onupgradeneeded = function () {
-          if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-            request.result.createObjectStore(STORE_NAME, { keyPath: "id" });
-          }
-        };
-        request.onsuccess = function () { resolve(request.result); };
-        request.onerror = function () { reject(request.error || new Error("Unable to open project storage.")); };
-        request.onblocked = function () { reject(new Error("Project storage is blocked by another open MathForge window.")); };
-      }).catch(function (error) {
-        dbPromise = null;
-        throw error;
-      });
-    }
-    return dbPromise;
+    if (!projectStorage) return Promise.reject(new Error("Local project storage could not be initialized."));
+    return projectStorage.open();
   }
 
   function captureProject() {
@@ -100,44 +92,14 @@
     });
   }
 
-  function writeProject(project) {
-    return openDatabase().then(function (db) {
-      return new Promise(function (resolve, reject) {
-        var transaction;
-        try {
-          transaction = db.transaction(STORE_NAME, "readwrite");
-          transaction.objectStore(STORE_NAME).put(project);
-        } catch (error) {
-          reject(error);
-          return;
-        }
-        transaction.oncomplete = function () { resolve(); };
-        transaction.onerror = function () { reject(transaction.error || new Error("Project save failed.")); };
-        transaction.onabort = function () { reject(transaction.error || new Error("Project save was aborted.")); };
-      });
-    });
-  }
-
   function readProject(id) {
-    return openDatabase().then(function (db) {
-      return new Promise(function (resolve, reject) {
-        var request = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).get(id);
-        request.onsuccess = function () { resolve(request.result || null); };
-        request.onerror = function () { reject(request.error || new Error("Unable to read the saved project.")); };
-      });
-    });
+    return projectStorage.get(id);
   }
 
   function listProjects() {
-    return openDatabase().then(function (db) {
-      return new Promise(function (resolve, reject) {
-        var request = db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
-        request.onsuccess = function () {
-          resolve((request.result || []).filter(function (project) { return project.id !== AUTOSAVE_ID; })
-            .sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); }));
-        };
-        request.onerror = function () { reject(request.error || new Error("Unable to list saved projects.")); };
-      });
+    return projectStorage.getAll().then(function (projects) {
+      return projects.filter(function (project) { return project.id !== AUTOSAVE_ID; })
+        .sort(function (a, b) { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
     });
   }
 
@@ -250,60 +212,65 @@
   function saveCurrent(showSuccess) {
     if (isRestoring) return Promise.resolve(false);
     if (showSuccess) hasUserInteracted = true;
-    var project;
-    try {
-      project = captureProject();
-    } catch (error) {
-      setNotice("Save failed: the current tool state could not be captured. " + error.message, true);
-      return Promise.reject(error);
-    }
-    var adapter = fileAdapter();
-    var fileHandle = adapter && adapter.getCurrentFileHandle();
-    var fileWrite = showSuccess && fileHandle
-      ? adapter.writeFile(fileHandle, serializeProject(project)).then(function () { return null; }, function (error) { return error; })
-      : Promise.resolve(null);
-    var localWrite = persistLocalProject(project);
-
-    return Promise.all([fileWrite, localWrite]).then(function (results) {
-      var fileError = results[0];
-      var localError = results[1].error;
-      if (fileHandle && showSuccess && !fileError) persistedKey = projectKey(project);
-      else if (!fileHandle && !localError) persistedKey = projectKey(project);
-      updateDirtyUI();
-
-      if (fileError) {
-        setNotice("Project file save failed: " + fileError.message +
-          (localError ? " The browser recovery copy also failed." : " A recovery copy was saved in this browser; the project file was not changed."), true);
-        throw fileError;
+    beginSave("Saving...");
+    return enqueueSaveOperation(function () {
+      var project;
+      try {
+        project = captureProject();
+      } catch (error) {
+        finishSave("Save failed: the current tool state could not be captured. " + error.message, true);
+        throw error;
       }
-      if (localError) {
-        if (fileHandle && showSuccess) {
-          setNotice("Project file saved, but the browser recovery copy failed: " + localError.message, true);
+      var adapter;
+      var fileHandle;
+      try {
+        adapter = fileAdapter();
+        fileHandle = adapter && adapter.getCurrentFileHandle();
+      } catch (error) {
+        finishSave("Save failed: " + error.message, true);
+        throw error;
+      }
+      var fileWrite = showSuccess && fileHandle
+        ? Promise.resolve().then(function () { return adapter.writeFile(fileHandle, serializeProject(project)); })
+          .then(function () { return null; }, function (error) { return error; })
+        : Promise.resolve(null);
+      var localWrite = persistLocalProject(project);
+
+      return Promise.all([fileWrite, localWrite]).then(function (results) {
+        var fileError = results[0];
+        var localError = results[1].error;
+        if (fileHandle && showSuccess && !fileError) persistedKey = projectKey(project);
+        else if (!fileHandle && !localError) persistedKey = projectKey(project);
+        updateDirtyUI();
+
+        if (fileError) {
+          finishSave("Save failed: project file write failed. " + fileError.message +
+            (localError ? " The browser recovery copy also failed." : " The project was saved locally as a recovery copy."), true);
+          throw fileError;
+        }
+        if (localError) {
+          if (fileHandle && showSuccess) {
+            finishSave("Project file saved; local recovery save failed: " + localError.message, true);
+            return true;
+          }
+          finishSave("Save failed: " + localError.message + " Use Save File As to download a portable .mathforge project.", true);
+          throw localError;
+        }
+        if (results[1].recentError) {
+          finishSave("Saved locally; recent projects could not be refreshed: " + results[1].recentError.message, true);
           return true;
         }
-        setNotice("Local save failed: " + localError.message + " Use Save File As to download a portable .mathforge project.", true);
-        throw localError;
-      }
-      if (results[1].recentError) {
-        setNotice("Project data was saved, but the recent-project list could not be refreshed: " +
-          results[1].recentError.message, true);
+        var status = updateDirtyUI()
+          ? "Saved locally. Newer changes are still pending."
+          : (showSuccess && fileHandle ? "Saved locally and to project file" : "Saved locally");
+        finishSave(status, false);
         return true;
-      }
-      if (showSuccess && !fileHandle && !updateDirtyUI()) {
-        setNotice("Project saved locally in this browser.", false);
-      } else if (showSuccess && fileHandle && !updateDirtyUI()) {
-        setNotice("Project file saved. A recovery copy is also stored in this browser.", false);
-      } else if (showSuccess) {
-        setNotice("The project changed while saving. Save again to store the latest changes.", true);
-      } else if (fileHandle) {
-        setNotice("Recovery saved in this browser. The original project file was not changed.", false);
-      }
-      return true;
+      });
     });
   }
 
   function scheduleMutation() {
-    if (isRestoring) return;
+    if (isRestoring || allowUnload) return;
     hasUserInteracted = true;
     updateDirtyUI();
     window.clearTimeout(historyTimer);
@@ -501,11 +468,11 @@
 
   function writeLocalProject(project) {
     var recovery = Object.assign({}, project, { id: AUTOSAVE_ID, sourceId: project.id });
-    return Promise.all([writeProject(project), writeProject(recovery)]);
+    return projectStorage.putMany([project, recovery]);
   }
 
   function persistLocalProject(project) {
-    return writeLocalProject(project).then(function () {
+    return Promise.resolve().then(function () { return writeLocalProject(project); }).then(function () {
       return refreshRecentProjects().then(function () {
         return { error: null, recentError: null };
       }, function (error) {
@@ -539,51 +506,66 @@
       }
     } catch (error) {
       if (error && error.name === "AbortError") return;
-      setNotice("Save As failed: " + error.message, true);
+      setNotice("Save failed: " + error.message, true);
       return;
     }
 
-    var project;
-    var serialized;
+    beginSave(handle ? "Saving..." : "Downloading project");
+
+    function finishSaveAs(project) {
+      currentId = project.id;
+      setProjectName(project.name);
+      if (fileAdapter()) fileAdapter().setCurrentFileHandle(handle);
+      persistedKey = projectKey(project);
+      resetHistory();
+      updateDirtyUI();
+      return persistLocalProject(project).then(function (localResult) {
+        if (localResult.error) {
+          finishSave((handle ? "Project file saved; local recovery save failed: " : "Project downloaded; local save failed: ") +
+            localResult.error.message, true);
+          return false;
+        }
+        if (localResult.recentError) {
+          finishSave((handle ? "Saved locally and to project file; " : "Project downloaded and saved locally; ") +
+            "recent projects could not be refreshed: " + localResult.recentError.message, true);
+          return false;
+        }
+        finishSave(handle ? "Saved locally and to project file" : "Project downloaded", false);
+        return true;
+      });
+    }
+
+    if (handle) {
+      return enqueueSaveOperation(async function () {
+        try {
+          var project = captureProject();
+          project.id = newProjectId();
+          project.name = name;
+          project.updatedAt = new Date().toISOString();
+          var serialized = serializeProject(project);
+          var adapter = fileAdapter();
+          if (!adapter) throw new Error("The project file adapter is unavailable.");
+          await adapter.writeFile(handle, serialized);
+          return finishSaveAs(project);
+        } catch (error) {
+          finishSave("Save failed: " + error.message, true);
+          return false;
+        }
+      });
+    }
+
+    var downloadedProject;
     try {
-      project = captureProject();
-      project.id = newProjectId();
-      project.name = name;
-      project.updatedAt = new Date().toISOString();
-      serialized = serializeProject(project);
-      if (handle) {
-        var adapter = fileAdapter();
-        if (!adapter) throw new Error("The project file adapter is unavailable.");
-        await adapter.writeFile(handle, serialized);
-      } else {
-        downloadProject(project);
-      }
+      downloadedProject = captureProject();
+      downloadedProject.id = newProjectId();
+      downloadedProject.name = name;
+      downloadedProject.updatedAt = new Date().toISOString();
+      downloadProject(downloadedProject);
     } catch (error) {
-      setNotice("Project file export failed: " + error.message, true);
+      finishSave("Save failed: " + error.message, true);
       return;
     }
-
-    currentId = project.id;
-    setProjectName(project.name);
-    if (fileAdapter()) fileAdapter().setCurrentFileHandle(handle);
-    persistedKey = projectKey(project);
-    resetHistory();
-    updateDirtyUI();
-
-    var localResult = await persistLocalProject(project);
-    if (localResult.error) {
-      setNotice((handle ? "Project file saved, " : "Project file download started, ") +
-        "but the browser recovery copy failed: " + localResult.error.message, true);
-      return;
-    }
-    if (localResult.recentError) {
-      setNotice((handle ? "Project file saved with its recovery copy, " : "Project file download started with its recovery copy, ") +
-        "but the recent-project list could not be refreshed: " + localResult.recentError.message, true);
-      return;
-    }
-    setNotice(handle
-      ? "Project file saved. A recovery copy is also stored in this browser."
-      : "Project file download started and a recovery copy was saved in this browser.", false);
+    return enqueueSaveOperation(function () { return finishSaveAs(downloadedProject); });
   }
 
   async function loadProjectText(text, source, handle, options) {
@@ -733,6 +715,27 @@
   }
 
   function exportGraph(format) {
+    var workspace = window.MathForgeWorkspace;
+    var activeTool = workspace && workspace.getState ? workspace.getState().activeTool : null;
+    if ((activeTool === "pie-chart" || activeTool === "equation-plotter") && workspace && typeof workspace.exportActiveTool === "function") {
+      try {
+        Promise.resolve(workspace.exportActiveTool(format)).then(function (result) {
+          var blob = result;
+          if (typeof result === "string") {
+            blob = format === "svg" ? new Blob([result], { type: "image/svg+xml;charset=utf-8" }) : dataUrlToBlob(result);
+          }
+          if (!(blob instanceof Blob)) throw new Error("The active graph engine did not return an export file.");
+          downloadBlob(blob, filenameForProject(format));
+          setNotice(format.toUpperCase() + " export started for " + currentName + ".", false);
+        }).catch(function (error) {
+          setNotice("Graph export failed: " + error.message, true);
+        });
+        return true;
+      } catch (error) {
+        setNotice("Graph export failed: " + error.message, true);
+        return false;
+      }
+    }
     var canvas = document.querySelector("#mfToolMountContainer canvas");
     if (!canvas || !canvas.width || !canvas.height) {
       setNotice("Export unavailable: select a graph tool first.", true);
@@ -947,6 +950,14 @@
 
   function syncZoomReadout() {
     var activeTool = window.MathForgeWorkspace.getState().activeTool;
+    var readout = document.getElementById("mfCanvasZoomReadout");
+    var status = document.getElementById("mfStatusZoom");
+    var activeToolInfo = window.MathForgeWorkspace.getActiveTool();
+    if (activeTool === "pie-chart") {
+      if (readout) readout.textContent = (activeToolInfo ? activeToolInfo.name : "Pie Chart") + " · Fit";
+      if (status) status.textContent = "—";
+      return;
+    }
     var zoomInput = {
       "equation-plotter": "zoom",
       "ogive-curve": "o_zoom",
@@ -955,9 +966,6 @@
     var input = zoomInput && document.getElementById(zoomInput);
     if (!input) return;
     var percentage = Math.round((Number(input.value) || 1) * 100) + "%";
-    var readout = document.getElementById("mfCanvasZoomReadout");
-    var status = document.getElementById("mfStatusZoom");
-    var activeToolInfo = window.MathForgeWorkspace.getActiveTool();
     if (readout) readout.textContent = (activeToolInfo ? activeToolInfo.name + " · " : "") + percentage;
     if (status) status.textContent = percentage;
   }
@@ -968,6 +976,44 @@
       event.returnValue = "";
     }
   });
+
+  function flushPendingLocalSave() {
+    if (saveTimer) {
+      window.clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    if (isRestoring || allowUnload) return;
+    var project;
+    var key;
+    try {
+      project = captureProject();
+      key = projectKey(project);
+    } catch (error) {
+      setNotice("Save failed: the current tool state could not be captured. " + error.message, true);
+      return;
+    }
+    if (key === persistedKey || key === lifecycleSaveKey) return;
+    lifecycleSaveKey = key;
+    beginSave("Saving...");
+    persistLocalProject(project).then(function (result) {
+      if (result.error) {
+        finishSave("Save failed during workspace close: " + result.error.message, true);
+        return;
+      }
+      persistedKey = key;
+      updateDirtyUI();
+      finishSave(result.recentError
+        ? "Saved locally; recent projects could not be refreshed: " + result.recentError.message
+        : "Saved locally", Boolean(result.recentError));
+    }).finally(function () {
+      if (lifecycleSaveKey === key) lifecycleSaveKey = null;
+    });
+  }
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "hidden") flushPendingLocalSave();
+  });
+  window.addEventListener("pagehide", flushPendingLocalSave);
 
   resetHistory();
   persistedKey = projectKey(captureProject());

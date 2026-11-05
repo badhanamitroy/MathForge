@@ -1,5 +1,52 @@
 # Project Changelog
 
+## [MathForge] General-Purpose Equation Plotter
+
+### Date
+2026-11-05
+
+### Overview
+Replaced the workspace Equation tool's single `y=f(x)` / separate points-mode experience with dynamic equation rows and independent coordinate points. A new safe parser supports explicit functions, inverse/vertical relations, implicit equalities, and inequalities. Functions use discontinuity-aware sampling; implicit boundaries use marching squares; inequalities shade sampled regions and distinguish strict from inclusive boundaries. Rendering remains on the shared canvas and uses shared grid, axes, K/N scale, zoom, pan, typography, aspect ratio, and project lifecycle. Equation PNG rendering forces opaque white; SVG export has an explicit white background and embeds the same rendered image. The original standalone Equation page continues to use the legacy mount path. Project version 1 is unchanged and legacy control-state projects are migrated at restore time.
+
+### Verification
+- Equation parser, workspace renderer, and Project Manager focused tests: 19/19 passed.
+- Final full suite: 70/70 passed. Two earlier full reruns had intermittent failures in the existing IndexedDB mock tests; the final run passed all tests.
+- JavaScript syntax checks and Vercel preparation passed; the eight changed runtime/build source files match their `dist/` copies.
+- Browser interaction testing was not completed.
+
+See [EQUATION_PLOTTER_REDESIGN_REPORT.md](./EQUATION_PLOTTER_REDESIGN_REPORT.md).
+
+## [MathForge] Pie Chart Typography & Output Visibility
+
+### Date
+2026-11-05
+
+### Overview
+Added independent Pie-only controls for slice percentage labels, Donut center label, and Donut center value sizes. Added independent visibility switches for the chart, calculation table, and drawing steps; unselected sections are omitted from layout, and an all-hidden state shows a concise prompt. The SVG and PNG chart export continues exporting the chart composition and uses the selected Pie typography. New preferences persist with Pie tool state in the existing version-1 project format, with defaults for older project state. Cartesian tools and global typography settings are unchanged.
+
+### Verification
+- Focused Pie and Project Manager save tests: 16/16 passed.
+- Full suite, JavaScript syntax, build preparation, and source/dist synchronization are reported in [PIE_CHART_DISPLAY_CUSTOMIZATION_REPORT.md](./PIE_CHART_DISPLAY_CUSTOMIZATION_REPORT.md).
+- Browser visual interaction testing was not performed in this session.
+
+See [PIE_CHART_DISPLAY_CUSTOMIZATION_REPORT.md](./PIE_CHART_DISPLAY_CUSTOMIZATION_REPORT.md).
+
+## [MathForge] Native Pie Chart Generator
+
+### Date
+2026-11-05
+
+### Overview
+Added Pie Chart as the fifth workspace generator through the existing registry and lifecycle. The new calculation module normalizes Bengali/English digits, calculates percentages and exact angles, and uses deterministic largest-remainder allocation for whole-degree classroom drawing. The native SVG tool provides pie/donut modes, a dynamic category table with an extended palette, interactive legend/tooltips, calculations, copyable TSV, and Bengali/English drawing steps. Shared background, typography, and styling apply; Cartesian Graph Paper & Scale and Zoom controls are hidden while Pie is active. Pie state remains in the existing `.mathforge` version-1 `toolStates` map. PNG export rasterizes the Pie SVG; SVG export uses the native vector output. No standalone page or external dependency was added.
+
+### Verification
+- Syntax checks passed for 18 application JavaScript files and `service-worker.js`.
+- `node --test tests/*.test.js` — 50/50 passed. Added tests cover Bengali/English number parsing, validation, exact angles, largest remainder and tie order, SVG/PNG output, categories beyond eight colors, version-1 save/reopen/switching, native export delegation, and Cartesian-only setting visibility.
+- `node scripts/prepare-vercel.mjs` completed. SHA-256 checks matched source and `dist/` for all eight changed runtime files.
+- Browser interaction testing was not performed; manual checks are listed in the implementation report.
+
+See [PIE_CHART_IMPLEMENTATION_REPORT.md](./PIE_CHART_IMPLEMENTATION_REPORT.md) and [PIE_CHART_INTEGRATION_AUDIT.md](./PIE_CHART_INTEGRATION_AUDIT.md).
+
 ## [MathForge] IndexedDB Save Reliability
 
 ### Date

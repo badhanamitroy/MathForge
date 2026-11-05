@@ -44,6 +44,7 @@ function managerHarness() {
   const workspace = {
     getState() { return { activeTool }; },
     getToolStates() { return JSON.parse(JSON.stringify(toolStates)); },
+    exportActiveTool(format) { return new Blob(["<svg data-format=\"" + format + "\"></svg>"], { type: format === "svg" ? "image/svg+xml" : "image/png" }); },
     selectTool(id) { activeTool = id; },
     resetTools() { toolStates = {}; },
     setToolStates(value) { toolStates = JSON.parse(JSON.stringify(value)); }
@@ -76,6 +77,7 @@ function managerHarness() {
     getDownload: () => downloadBlob,
     getDesign: () => designState,
     getToolStates: () => toolStates,
+    getActiveToolId: () => activeTool,
     setWorkspaceState(tool, states) { activeTool = tool; toolStates = states; },
     setDesignState(value) { designState = value; },
     acceptDialog(value) {
@@ -131,4 +133,73 @@ test("queued saves retain graph switches, K/N changes, and a renamed project", a
   assert.ok(renamed);
   assert.equal(renamed.activeTool, "coordinates-graph");
   assert.deepEqual(renamed.graphDesignSettings.axisScale, { x: { k: 7, n: 2 }, y: { k: 3, n: 4 } });
+});
+
+test("Pie Chart state saves, reopens, and survives switching to another generator in version 1", async () => {
+  const harness = managerHarness();
+  await harness.manager.ready;
+  const pieState = {
+    title: "ফলের বিক্রি", unit: "কেজি", mode: "donut", numerals: "bn", holeRatio: 0.62,
+    slicePercentageFontSize: 12, donutCenterLabelFontSize: 12, donutCenterValueFontSize: 20,
+    showChart: true, showCalculationTable: true, showDrawingSteps: true,
+    categories: [
+      { id: "mango", name: "আম", value: "১২.৫", color: "#2563eb" },
+      { id: "banana", name: "কলা", value: "৭.৫", color: "#f97316" }
+    ]
+  };
+  harness.setWorkspaceState("pie-chart", { "pie-chart": pieState, "coordinates-graph": { pointSets: [{ points: [{ x: 1, y: 2 }] }] } });
+  await harness.manager.save(true);
+  const saved = Array.from(harness.stored.values()).find((project) => project.activeTool === "pie-chart");
+  assert.ok(saved);
+  assert.equal(saved.version, 1);
+  assert.deepEqual(saved.toolStates["pie-chart"], pieState);
+  assert.equal(await harness.manager.loadProjectText(JSON.stringify(saved), "Pie project.mathforge", null), true);
+  assert.equal(harness.getActiveToolId(), "pie-chart");
+  assert.deepEqual(harness.getToolStates()["pie-chart"], pieState);
+
+  harness.setWorkspaceState("histogram-polygon", harness.getToolStates());
+  await harness.manager.save(true);
+  const switched = Array.from(harness.stored.values()).find((project) => project.activeTool === "histogram-polygon");
+  assert.deepEqual(switched.toolStates["pie-chart"], pieState);
+});
+
+test("Pie Chart export uses the active engine SVG instead of the Cartesian canvas fallback", async () => {
+  const harness = managerHarness();
+  await harness.manager.ready;
+  harness.setWorkspaceState("pie-chart", { "pie-chart": { title: "Test", categories: [] } });
+  assert.equal(harness.manager.exportGraph("svg"), true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const exported = harness.getDownload();
+  assert.equal(exported.type, "image/svg+xml");
+  assert.match(await exported.text(), /<svg data-format="svg"><\/svg>/);
+  assert.match(harness.elements.get("mfStorageNotice").textContent, /SVG export started/);
+});
+
+test("Equation Plotter state saves and reopens in the unchanged version-1 toolStates map", async () => {
+  const harness = managerHarness();
+  await harness.manager.ready;
+  const equationState = {
+    equations: [{ id: "line", label: "Line", expression: "y=2x+3", color: "#2563eb", visible: true },
+      { id: "circle", label: "Circle", expression: "x^2+y^2=25", color: "#dc2626", visible: false }],
+    points: [{ id: "p-a", label: "A", x: "2", y: "3", visible: true }], zoom: 1.4, panX: 12, panY: -8, lineWidth: 2.5, cleared: false
+  };
+  harness.setWorkspaceState("equation-plotter", { "equation-plotter": equationState });
+  await harness.manager.save(true);
+  const saved = Array.from(harness.stored.values()).find((project) => project.activeTool === "equation-plotter");
+  assert.equal(saved.version, 1);
+  assert.deepEqual(saved.toolStates["equation-plotter"], equationState);
+  assert.equal(await harness.manager.loadProjectText(JSON.stringify(saved), "Equations.mathforge", null), true);
+  assert.deepEqual(harness.getToolStates()["equation-plotter"], equationState);
+});
+
+test("Equation Plotter export delegates PNG and SVG to its engine for white export rendering", async () => {
+  const harness = managerHarness();
+  await harness.manager.ready;
+  harness.setWorkspaceState("equation-plotter", { "equation-plotter": { equations: [], points: [] } });
+  assert.equal(harness.manager.exportGraph("png"), true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(harness.getDownload().type, "image/png");
+  assert.equal(harness.manager.exportGraph("svg"), true);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(harness.getDownload().type, "image/svg+xml");
 });

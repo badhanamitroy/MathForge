@@ -5,7 +5,7 @@
     {
       id: "equation-plotter",
       name: "Equation Plotter",
-      description: "Plot mathematical functions and points",
+      description: "Plot equations, relations, inequalities, and coordinate points",
       icon: "ƒ",
       engine: function () { return window.MathForgeEquationPlotter; },
       canvasLabel: "Equation plotter graph",
@@ -281,9 +281,14 @@
         controlsHost = document.createElement("section");
         controlsHost.className = "mf-tool-control-host mf-tool-control-" + definition.id;
         controlsHost.setAttribute("aria-label", definition.name + " controls");
-        controlsHost.innerHTML = template + definition.actions;
+        if (definition.id === "equation-plotter") {
+          controlsHost.innerHTML = '<section class="eq-general-panel" data-eq-workspace-slot></section>' +
+            '<input id="zoom" type="range" min="0.4" max="3" step="0.05" value="1" hidden>' +
+            '<input id="csize" value="920,690" hidden><input id="origin" value="460,345" hidden>' +
+            '<button id="reset" type="button" hidden>Reset graph</button>';
+        } else controlsHost.innerHTML = template + definition.actions;
         host.appendChild(controlsHost);
-        designHost = mountGraphSpecificControls(definition, controlsHost);
+        designHost = definition.id === "equation-plotter" ? null : mountGraphSpecificControls(definition, controlsHost);
 
         canvasElement = document.createElement("canvas");
         canvasElement.className = "mf-shared-graph-canvas";
@@ -373,6 +378,10 @@
     };
 
     function fitEquationToCanvas() {
+      if (engineInstance && typeof engineInstance.fitView === "function") {
+        engineInstance.fitView();
+        return;
+      }
       var sourceSize = window.parsePair && window.parsePair(document.getElementById("csize").value);
       var originInput = document.getElementById("origin");
       var zoomInput = document.getElementById("zoom");

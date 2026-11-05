@@ -3,7 +3,7 @@
 
   var AUTOSAVE_ID = "mathforge-autosave";
   var PROJECT_MIME_TYPE = "application/json";
-  var TOOL_IDS = ["coordinates-graph", "equation-plotter", "ogive-curve", "histogram-polygon"];
+  var TOOL_IDS = ["coordinates-graph", "equation-plotter", "ogive-curve", "histogram-polygon", "pie-chart"];
   var currentId = newProjectId();
   var currentName = "Untitled Project";
   var projectStorage = window.MathForgeProjectStorage;
@@ -715,6 +715,27 @@
   }
 
   function exportGraph(format) {
+    var workspace = window.MathForgeWorkspace;
+    var activeTool = workspace && workspace.getState ? workspace.getState().activeTool : null;
+    if ((activeTool === "pie-chart" || activeTool === "equation-plotter") && workspace && typeof workspace.exportActiveTool === "function") {
+      try {
+        Promise.resolve(workspace.exportActiveTool(format)).then(function (result) {
+          var blob = result;
+          if (typeof result === "string") {
+            blob = format === "svg" ? new Blob([result], { type: "image/svg+xml;charset=utf-8" }) : dataUrlToBlob(result);
+          }
+          if (!(blob instanceof Blob)) throw new Error("The active graph engine did not return an export file.");
+          downloadBlob(blob, filenameForProject(format));
+          setNotice(format.toUpperCase() + " export started for " + currentName + ".", false);
+        }).catch(function (error) {
+          setNotice("Graph export failed: " + error.message, true);
+        });
+        return true;
+      } catch (error) {
+        setNotice("Graph export failed: " + error.message, true);
+        return false;
+      }
+    }
     var canvas = document.querySelector("#mfToolMountContainer canvas");
     if (!canvas || !canvas.width || !canvas.height) {
       setNotice("Export unavailable: select a graph tool first.", true);
@@ -929,6 +950,14 @@
 
   function syncZoomReadout() {
     var activeTool = window.MathForgeWorkspace.getState().activeTool;
+    var readout = document.getElementById("mfCanvasZoomReadout");
+    var status = document.getElementById("mfStatusZoom");
+    var activeToolInfo = window.MathForgeWorkspace.getActiveTool();
+    if (activeTool === "pie-chart") {
+      if (readout) readout.textContent = (activeToolInfo ? activeToolInfo.name : "Pie Chart") + " · Fit";
+      if (status) status.textContent = "—";
+      return;
+    }
     var zoomInput = {
       "equation-plotter": "zoom",
       "ogive-curve": "o_zoom",
@@ -937,9 +966,6 @@
     var input = zoomInput && document.getElementById(zoomInput);
     if (!input) return;
     var percentage = Math.round((Number(input.value) || 1) * 100) + "%";
-    var readout = document.getElementById("mfCanvasZoomReadout");
-    var status = document.getElementById("mfStatusZoom");
-    var activeToolInfo = window.MathForgeWorkspace.getActiveTool();
     if (readout) readout.textContent = (activeToolInfo ? activeToolInfo.name + " · " : "") + percentage;
     if (status) status.textContent = percentage;
   }

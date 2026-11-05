@@ -1,6 +1,6 @@
 "use strict";
 
-var CACHE_NAME = "mathforge-shell-v6";
+var CACHE_NAME = "mathforge-shell-v9";
 var APP_SCOPE = self.registration.scope;
 var SHELL_URL = new URL("index.html", APP_SCOPE).href;
 var OPEN_PROJECT_PATH = new URL("open-project", APP_SCOPE).pathname;
@@ -14,11 +14,15 @@ var APP_ASSETS = [
   "assets/css/common.css",
   "assets/css/workspace.css",
   "assets/css/tools/coordinates-tool.css",
+  "assets/css/tools/pie-chart.css",
   "assets/css/tools/shared-graph-controls.css",
   "assets/js/common.js",
   "assets/js/core/graph-scale.js",
+  "assets/js/core/equation-math.js",
+  "assets/js/core/pie-chart-calculations.js",
   "assets/js/core/graph-typography.js",
   "assets/js/core/graph-design-settings.js",
+  "assets/js/core/indexeddb-project-store.js",
   "assets/js/workspace-core.js",
   "assets/js/project-manager.js",
   "assets/js/core/project-file-adapter.js",
@@ -28,6 +32,7 @@ var APP_ASSETS = [
   "assets/js/tools/ogive-engine.js",
   "assets/js/tools/histogram-engine.js",
   "assets/js/tools/standalone-adapters.js",
+  "assets/js/tools/pie-chart-engine.js",
   "assets/js/tools/standalone-bridge.js",
   "assets/img/MathForge Logo.png",
   "assets/img/pwa-192.png",

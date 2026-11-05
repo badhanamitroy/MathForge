@@ -2,7 +2,7 @@
 
 **Last updated:** 2026-11-05
 
-**Latest change:** Fixed IndexedDB connection reuse and serialized local/file saves to prevent “The database connection is closing” failures. The full automated suite passes 39/39, the Vercel preparation build completes, and updated runtime assets match `dist/`; real-browser lifecycle acceptance remains pending. See [INDEXEDDB_SAVE_FIX_REPORT.md](./INDEXEDDB_SAVE_FIX_REPORT.md).  
+**Latest change:** Reworked the workspace Equation Plotter around multi-equation safe parsing, implicit conics, inequalities, and coordinate points on the shared graph canvas. Focused Equation/project tests pass 19/19. Final full suite passed 70/70; two earlier reruns exposed intermittent existing IndexedDB mock failures. Syntax, Vercel preparation, and 8/8 source/dist checks passed. Browser interaction remains unverified. See [EQUATION_PLOTTER_REDESIGN_REPORT.md](./EQUATION_PLOTTER_REDESIGN_REPORT.md).  
 **Project:** MathForge (formerly Textbook Graph Suite) — Professional Offline-First Mathematical Visualization Platform  
 **Status as of this document:** The user has manually confirmed that the Vercel-hosted app works, the installed desktop PWA opens MathForge, double-clicking a `.mathforge` file opens that project, and project rename/save work. These are user-confirmed manual acceptance results, not tests independently run in this session. See [PHASE_5_2_MANUAL_PWA_ACCEPTANCE_REPORT.md](./PHASE_5_2_MANUAL_PWA_ACCEPTANCE_REPORT.md). Phase 4.7's requested desktop viewport checks and distributable ZIP remain open. SQLite and cloud sync remain out of scope.
 
@@ -35,6 +35,7 @@
 | **Infinite Coordinate Axes** | Shared infinite-axis rendering, bidirectional arrows, origin-aware labels, and origin-anchored major grid lattice | ✅ Implemented; 30 automated tests pass, browser verification pending | [INFINITE_AXIS_IMPLEMENTATION_REPORT.md](./INFINITE_AXIS_IMPLEMENTATION_REPORT.md) |
 | **Workspace UI Recovery** | Restore three-column layout, usable canvas height, and independently scrolling settings panels | ✅ Source and build checks pass; browser acceptance pending | [UI_RECOVERY_REPORT.md](./UI_RECOVERY_REPORT.md) |
 | **IndexedDB Save Reliability** | Reconnect stale IndexedDB handles, serialize local/file saves, and report save status accurately | ✅ Automated suite 39/39; Vercel build and source/dist synchronization pass; browser lifecycle checks pending | [INDEXEDDB_SAVE_FIX_REPORT.md](./INDEXEDDB_SAVE_FIX_REPORT.md) |
+| **Native Pie Chart Generator** | Add a fifth registry tool with Bengali-aware calculations, SVG/PNG export, and version-1 persistence | ✅ Automated suite 50/50; syntax, Vercel build, and source/dist checks pass; browser acceptance pending | [PIE_CHART_IMPLEMENTATION_REPORT.md](./PIE_CHART_IMPLEMENTATION_REPORT.md) |
 
 ## User-Confirmed Manual PWA Acceptance (2026-11-03)
 
@@ -140,7 +141,7 @@ See [PHASE_4_7_EARLY_BUILD_REPORT.md](./PHASE_4_7_EARLY_BUILD_REPORT.md) for the
 
 | File | Status | Notes |
 |---|---|---|
-| `index.html` | ✅ Phases 3–6 Integrated | Active MathForge workspace with four direct graph engines on one canvas. |
+| `index.html` | ✅ Five workspace generators | Active MathForge workspace with four Cartesian engines and the native Pie Chart SVG tool mounted in one shared workspace. |
 | `Coordinates_graph.html` | ✅ Phase 3 Refactored | Standalone tool invoking shared engine (`initStandalone`); 100% functional fidelity. |
 | `assets/js/tools/coordinates-tool.js` | ✅ Phase 3 Created | Shared pure mathematical engine, rendering pipeline, standalone bridge, and workspace adapter. |
 | `assets/css/tools/coordinates-tool.css` | ✅ Phase 3 Created | Scoped styling for coordinates input cards, point offsets, and visual properties. |
@@ -154,5 +155,8 @@ See [PHASE_4_7_EARLY_BUILD_REPORT.md](./PHASE_4_7_EARLY_BUILD_REPORT.md) for the
 | `assets/js/tools/equation-plotter-engine.js` | ✅ Shared renderer | Standalone and workspace Equation renderer. |
 | `assets/js/tools/ogive-engine.js` | ✅ Shared renderer | Standalone and workspace Ogive renderer. |
 | `assets/js/tools/histogram-engine.js` | ✅ Shared renderer | Standalone and workspace Histogram/Polygon renderer. |
+| `assets/js/core/pie-chart-calculations.js` | ✅ Native Pie Chart | Bengali-aware number parsing, exact percentages/angles, and 360° largest-remainder allocation. |
+| `assets/js/tools/pie-chart-engine.js` | ✅ Native Pie Chart | Registered SVG pie/donut generator with independent saved state, calculations, legend, steps, and export. |
+| `assets/css/tools/pie-chart.css` | ✅ Native Pie Chart | Workspace-scoped Pie inputs, responsive chart, legend, and calculation output styles. |
 | `assets/css/tools/shared-graph-controls.css` | ✅ Workspace controls | Styles original controls inside the workspace input panel. |
 | `assets/js/common.js` | ✅ Shared utility | Includes listener disposal for editable frequency tables. |

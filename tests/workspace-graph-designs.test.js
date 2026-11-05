@@ -13,6 +13,11 @@ const typographySource = fs.readFileSync(path.join(root, "assets/js/core/graph-t
 
 function makeHarness() {
   const elements = new Map();
+  let activeTool = null;
+  const cartesianGroups = [
+    { hidden: false, attrs: {}, setAttribute(name, value) { this.attrs[name] = value; } },
+    { hidden: false, attrs: {}, setAttribute(name, value) { this.attrs[name] = value; } }
+  ];
   function element(id, type) {
     const listeners = {};
     const value = { id, type: type || "text", tagName: type === "select" ? "SELECT" : "INPUT", value: "", checked: false,
@@ -39,12 +44,14 @@ function makeHarness() {
   const documentListeners = {};
   const document = {
     getElementById(id) { return elements.get(id) || null; },
+    querySelectorAll(selector) { return selector === "[data-mf-cartesian-only]" ? cartesianGroups : []; },
     addEventListener(name, callback) { (documentListeners[name] ||= []).push(callback); },
     removeEventListener() {},
     dispatchEvent(event) { (documentListeners[event.type] || []).forEach((callback) => callback(event)); }
   };
   const windowListeners = {};
   const window = {
+    MathForgeWorkspace: { getActiveTool() { return activeTool ? { id: activeTool } : null; } },
     getComputedStyle() { return { paddingLeft: "0px", paddingRight: "0px", paddingTop: "0px", paddingBottom: "0px" }; },
     addEventListener(name, callback) { (windowListeners[name] ||= []).push(callback); }
   };
@@ -54,7 +61,10 @@ function makeHarness() {
   vm.runInNewContext(scaleSource, context, { filename: "graph-scale.js" });
   vm.runInNewContext(source, context, { filename: "graph-design-settings.js" });
   vm.runInNewContext(typographySource, context, { filename: "graph-typography.js" });
-  return { settings: window.MathForgeGraphDesignSettings, typography: window.MathForgeGraphTypography, elements };
+  return {
+    settings: window.MathForgeGraphDesignSettings, typography: window.MathForgeGraphTypography, elements, cartesianGroups,
+    selectTool(id) { activeTool = id; document.dispatchEvent({ type: "mf:tool-changed" }); }
+  };
 }
 
 test("shared graph design defaults to 4:3 and sizes the shared canvas at that ratio", () => {
@@ -177,9 +187,20 @@ test("toolbar stays left aligned in a non-wrapping, horizontally scrollable row"
   assert.match(css, /\.mf-generator-toolbar[^\{]*\{[^}]*justify-content:\s*flex-start;[^}]*flex-wrap:\s*nowrap/s);
   assert.match(css, /\.mf-generator-toolbar \.mf-tool-list[^\{]*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto/s);
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
-  for (const id of ["coordinates-graph", "equation-plotter", "ogive-curve", "histogram-polygon"]) {
+  for (const id of ["coordinates-graph", "equation-plotter", "ogive-curve", "histogram-polygon", "pie-chart"]) {
     assert.match(html, new RegExp(`data-tool-id="${id}"`));
   }
+  assert.match(html, /data-mf-cartesian-only/);
+  assert.match(source, /function syncToolApplicability/);
+});
+
+test("Cartesian-only Graph Designs controls hide for Pie and return for Cartesian generators", () => {
+  const { selectTool, cartesianGroups } = makeHarness();
+  selectTool("pie-chart");
+  assert.ok(cartesianGroups.every((section) => section.hidden));
+  assert.ok(cartesianGroups.every((section) => section.attrs["aria-hidden"] === "true"));
+  selectTool("coordinates-graph");
+  assert.ok(cartesianGroups.every((section) => !section.hidden));
 });
 
 test("project persistence keeps the version-1 format and optional shared design settings", () => {

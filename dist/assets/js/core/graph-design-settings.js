@@ -108,6 +108,15 @@
     return active && active.id;
   }
 
+  function syncToolApplicability() {
+    var pieActive = activeToolId() === "pie-chart";
+    if (!document.querySelectorAll) return;
+    document.querySelectorAll("[data-mf-cartesian-only]").forEach(function (section) {
+      section.hidden = pieActive;
+      section.setAttribute("aria-hidden", String(pieActive));
+    });
+  }
+
   function syncActiveTool() {
     var toolId = activeToolId();
     var commonInputs = {
@@ -171,6 +180,7 @@
       var input = document.getElementById(entry[0]);
       if (input && document.activeElement !== input) input.value = String(entry[1]);
     });
+    syncToolApplicability();
   }
 
   function setScaleFromControls() {

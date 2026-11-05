@@ -5,6 +5,7 @@
    were removed so we don't shadow the shared versions. */
 function mount(options) {
   options = options || {};
+  if (options.workspace) return mountGeneralWorkspace(options);
   var canvasView = options.canvasView || null;
   var controlRoot = options.controlsRoot || document;
   var cleanups = [];
@@ -762,6 +763,466 @@ function mount(options) {
     setState: restoreState,
     unmount: dispose
   };
+}
+
+function mountGeneralWorkspace(options) {
+  var canvasView = options.canvasView;
+  var controlsRoot = options.controlsRoot;
+  var cv = canvasView;
+  var ctx = cv && cv.getContext("2d");
+  var math = window.MathForgeEquationMath;
+  var cleanups = [];
+  var state = { equations: [], points: [], zoom: 1, panX: 0, panY: 0, lineWidth: 2.5, cleared: false };
+  var compiled = Object.create(null);
+  var lastErrors = Object.create(null);
+  var pointHitBoxes = [];
+  var sequence = 0;
+  var eqPalette = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#be185d", "#4d7c0f"];
+  var dragging = null;
+  var xRateFallback = 5, yRateFallback = 1;
+
+  function listen(target, type, handler, listenerOptions) {
+    if (!target) return;
+    target.addEventListener(type, handler, listenerOptions);
+    cleanups.push(function () { target.removeEventListener(type, handler, listenerOptions); });
+  }
+  function escapeHtml(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+  function nextId(prefix) { sequence += 1; return prefix + "-" + Date.now().toString(36) + "-" + sequence.toString(36); }
+  function color(index) { return eqPalette[index % eqPalette.length]; }
+  function defaultState() {
+    return { equations: [{ id: nextId("eq"), label: "Equation 1", expression: "y = 2x + 3", color: color(0), visible: true }],
+      points: [], zoom: 1, panX: 0, panY: 0, lineWidth: 2.5, cleared: false };
+  }
+  function controlMarkup() {
+    var html = '<section class="eq-general-panel" aria-label="Equation Plotter inputs">' +
+      '<section class="eq-input-group"><h3>Equations <small>Angles use radians</small></h3><div class="eq-equation-list">';
+    state.equations.forEach(function (equation, index) {
+      html += '<article class="eq-equation-row" data-eq-row="' + escapeHtml(equation.id) + '">' +
+        '<header><strong>Equation ' + (index + 1) + '</strong>' +
+        '<label class="eq-visible"><input type="checkbox" data-eq-field="visible" data-eq-id="' + escapeHtml(equation.id) + '"' + (equation.visible ? " checked" : "") + '> Visible</label>' +
+        '<input class="eq-color" type="color" aria-label="Equation ' + (index + 1) + ' colour" data-eq-field="color" data-eq-id="' + escapeHtml(equation.id) + '" value="' + escapeHtml(equation.color) + '">' +
+        '<button type="button" class="eq-delete" data-eq-delete="' + escapeHtml(equation.id) + '" aria-label="Delete equation ' + (index + 1) + '">Delete</button></header>' +
+        '<label>Name<input type="text" data-eq-field="label" data-eq-id="' + escapeHtml(equation.id) + '" value="' + escapeHtml(equation.label) + '"></label>' +
+        '<label class="eq-expression-field">Expression<input class="eq-expression" type="text" spellcheck="false" autocomplete="off" data-eq-field="expression" data-eq-id="' + escapeHtml(equation.id) + '" value="' + escapeHtml(equation.expression) + '" placeholder="e.g. y = x^2 or x^2 + y^2 = 25"></label>' +
+        '<div class="eq-row-error" data-eq-error="' + escapeHtml(equation.id) + '" role="alert"></div></article>';
+    });
+    html += '</div><div class="eq-actions"><button type="button" data-eq-action="add-equation">+ Add Equation</button>' +
+      '<button class="primary" type="button" data-eq-action="plot">Plot / Update</button><button type="button" data-eq-action="clear-plot">Clear Graph</button></div>' +
+      '<p class="eq-hint">Functions, conics and inequalities are inferred from the expression. Examples: <code>y = sin(x)</code>, <code>x^2 + y^2 = 25</code>, <code>y &gt; 2x + 1</code>.</p>' +
+      '<div class="eq-feedback" data-eq-feedback role="status" aria-live="polite"></div></section>' +
+      '<section class="eq-input-group"><h3>Points</h3><div class="eq-point-list">';
+    state.points.forEach(function (point, index) {
+      html += '<article class="eq-point-row" data-pt-row="' + escapeHtml(point.id) + '">' +
+        '<strong>Point ' + (index + 1) + '</strong><label>Label<input type="text" data-pt-field="label" data-pt-id="' + escapeHtml(point.id) + '" value="' + escapeHtml(point.label) + '"></label>' +
+        '<label>x<input type="number" step="any" data-pt-field="x" data-pt-id="' + escapeHtml(point.id) + '" value="' + escapeHtml(point.x) + '"></label>' +
+        '<label>y<input type="number" step="any" data-pt-field="y" data-pt-id="' + escapeHtml(point.id) + '" value="' + escapeHtml(point.y) + '"></label>' +
+        '<label class="eq-visible"><input type="checkbox" data-pt-field="visible" data-pt-id="' + escapeHtml(point.id) + '"' + (point.visible ? " checked" : "") + '> Visible</label>' +
+        '<button type="button" class="eq-delete" data-pt-delete="' + escapeHtml(point.id) + '" aria-label="Delete point ' + (index + 1) + '">Delete</button>' +
+        '<div class="eq-row-error" data-pt-error="' + escapeHtml(point.id) + '" role="alert"></div></article>';
+    });
+    html += '</div><button type="button" data-eq-action="add-point">+ Add Point</button></section>' +
+      '<input id="zoom" type="range" min="0.4" max="3" step="0.05" value="' + state.zoom + '" hidden>' +
+      '<input id="csize" value="920,690" hidden><input id="origin" value="460,345" hidden>' +
+      '<button id="reset" type="button" hidden>Reset graph</button></section>';
+    controlsRoot.innerHTML = html;
+  }
+  function oldValue(saved, id, fallback) {
+    if (!saved || !Array.isArray(saved.controls)) return fallback;
+    var found = saved.controls.find(function (control) { return control.id === id; });
+    return found ? found.value : fallback;
+  }
+  function oldChecked(saved, id, fallback) {
+    if (!saved || !Array.isArray(saved.controls)) return fallback;
+    var found = saved.controls.find(function (control) { return control.id === id; });
+    return found ? Boolean(found.checked) : fallback;
+  }
+  function restore(saved) {
+    if (!saved || typeof saved !== "object") { state = defaultState(); }
+    else if (Array.isArray(saved.equations)) {
+      var seen = Object.create(null);
+      state = {
+        equations: saved.equations.map(function (item, index) {
+          item = item || {}; var id = String(item.id || nextId("eq"));
+          if (seen[id]) id = nextId("eq"); seen[id] = true;
+          return { id: id, label: String(item.label == null ? "Equation " + (index + 1) : item.label), expression: String(item.expression == null ? "" : item.expression),
+            color: /^#[0-9a-f]{6}$/i.test(String(item.color || "")) ? item.color : color(index), visible: item.visible !== false };
+        }),
+        points: Array.isArray(saved.points) ? saved.points.map(function (point, index) {
+          point = point || {}; return { id: String(point.id || nextId("pt")), label: String(point.label == null ? String.fromCharCode(65 + index % 26) : point.label),
+            x: String(point.x == null ? "" : point.x), y: String(point.y == null ? "" : point.y), visible: point.visible !== false };
+        }) : [],
+        zoom: bounded(saved.zoom, 1, 0.4, 3), panX: finiteOr(saved.panX, 0), panY: finiteOr(saved.panY, 0), lineWidth: bounded(saved.lineWidth, 2.5, 1, 8), cleared: Boolean(saved.cleared)
+      };
+    } else if (Array.isArray(saved.controls)) {
+      var legacyFunction = String(oldValue(saved, "fn", "Math.pow(0.5, x)")).replace(/\bMath\./g, "");
+      var legacyMode = oldValue(saved, "mode", "function");
+      var equation = { id: nextId("eq"), label: "Equation 1", expression: "y = " + legacyFunction, color: color(0), visible: true };
+      var legacyPoints = String(oldValue(saved, "points", "")).split(/\r?\n/).map(function (line, index) {
+        var match = line.match(/^\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*$/);
+        return match ? { id: nextId("pt"), label: String.fromCharCode(65 + index % 26), x: match[1], y: match[2], visible: oldChecked(saved, "showPoints", true) } : null;
+      }).filter(Boolean);
+      if (legacyMode === "points" && !legacyFunction) equation.expression = "";
+      state = { equations: [equation], points: legacyPoints, zoom: bounded(oldValue(saved, "zoom", 1), 1, 0.4, 3), panX: 0, panY: 0,
+        lineWidth: bounded(oldValue(saved, "curveWidth", 2.5), 2.5, 1, 8), cleared: false };
+      var oldCanvas = String(oldValue(saved, "csize", "920,690")).split(",").map(Number);
+      var oldOrigin = String(oldValue(saved, "origin", "460,345")).split(",").map(Number);
+      if (oldCanvas.length === 2 && oldOrigin.length === 2 && oldCanvas.every(Number.isFinite) && oldOrigin.every(Number.isFinite)) {
+        state.panX = oldOrigin[0] - oldCanvas[0] / 2; state.panY = oldOrigin[1] - oldCanvas[1] / 2;
+      }
+    } else state = defaultState();
+    compiled = Object.create(null);
+    if (math) state.equations.forEach(function (equation) {
+      if (!equation.expression.trim()) return;
+      try { compiled[equation.id] = math.compile(equation.expression); } catch (ignore) {}
+    });
+  }
+  function finiteOr(value, fallback) { var n = Number(value); return Number.isFinite(n) ? n : fallback; }
+  function bounded(value, fallback, minimum, maximum) { var n = Number(value); return Number.isFinite(n) ? Math.max(minimum, Math.min(maximum, n)) : fallback; }
+  function getDesign() {
+    return window.MathForgeGraphDesignSettings ? window.MathForgeGraphDesignSettings.getState() : {
+      background: "#ffffff", gridVisible: true, gridSpacing: 10, majorEvery: 5, gridColor: "#000000", axesVisible: true, axisColor: "#000000",
+      fontFamily: "Times New Roman", fontSizePt: 11, fontColor: "#111827", bold: false, axisScale: { x: { k: 5, n: 1 }, y: { k: 1, n: 1 } }
+    };
+  }
+  function effectiveRate(axis) {
+    return window.MathForgeGraphScale ? window.MathForgeGraphScale.effectiveRate(axis, axis === "x" ? xRateFallback : yRateFallback) : axis === "x" ? xRateFallback : yRateFallback;
+  }
+  function transform() {
+    var design = getDesign();
+    var minor = Math.max(1, Number(design.gridSpacing) || 10);
+    var zoom = bounded(state.zoom, 1, 0.4, 3);
+    return { ox: cv.width / 2 + state.panX, oy: cv.height / 2 + state.panY, minor: minor, zoom: zoom,
+      sx: minor * zoom * effectiveRate("x"), sy: minor * zoom * effectiveRate("y") };
+  }
+  function worldToScreen(x, y, tr) { return [tr.ox + x * tr.sx, tr.oy - y * tr.sy]; }
+  function screenToWorld(px, py, tr) { return [(px - tr.ox) / tr.sx, (tr.oy - py) / tr.sy]; }
+  function drawPaper(targetCtx, targetCanvas, tr, forceWhite) {
+    var design = getDesign(), width = targetCanvas.width, height = targetCanvas.height;
+    targetCtx.save();
+    targetCtx.fillStyle = forceWhite ? "#FFFFFF" : design.background || "#ffffff";
+    targetCtx.fillRect(0, 0, width, height);
+    if (design.gridVisible !== false) {
+      var spacing = tr.minor * tr.zoom, major = Math.max(2, Math.floor(Number(design.majorEvery) || 5));
+      targetCtx.strokeStyle = design.gridColor || "#000000";
+      targetCtx.lineWidth = 1;
+      targetCtx.globalAlpha = .14;
+      targetCtx.beginPath();
+      var startX = Math.ceil((0 - tr.ox) / spacing), endX = Math.floor((width - tr.ox) / spacing);
+      var startY = Math.ceil((0 - tr.oy) / spacing), endY = Math.floor((height - tr.oy) / spacing);
+      for (var ix = startX; ix <= endX; ix++) if (ix % major !== 0) { var gx = tr.ox + ix * spacing; targetCtx.moveTo(gx, 0); targetCtx.lineTo(gx, height); }
+      for (var iy = startY; iy <= endY; iy++) if (iy % major !== 0) { var gy = tr.oy + iy * spacing; targetCtx.moveTo(0, gy); targetCtx.lineTo(width, gy); }
+      targetCtx.stroke();
+      targetCtx.globalAlpha = .38;
+      targetCtx.lineWidth = 1.4;
+      targetCtx.beginPath();
+      for (ix = Math.ceil(startX / major) * major; ix <= endX; ix += major) { gx = tr.ox + ix * spacing; targetCtx.moveTo(gx, 0); targetCtx.lineTo(gx, height); }
+      for (iy = Math.ceil(startY / major) * major; iy <= endY; iy += major) { gy = tr.oy + iy * spacing; targetCtx.moveTo(0, gy); targetCtx.lineTo(width, gy); }
+      targetCtx.stroke();
+    }
+    targetCtx.restore();
+  }
+  function drawAxes(targetCtx, targetCanvas, tr) {
+    var design = getDesign();
+    if (design.axesVisible === false || !window.drawInfiniteAxes) return;
+    targetCtx.save();
+    targetCtx.strokeStyle = design.axisColor || "#000000";
+    targetCtx.fillStyle = design.fontColor || "#000000";
+    targetCtx.lineWidth = 2;
+    window.drawInfiniteAxes(targetCtx, targetCanvas, tr.ox, tr.oy, { color: design.axisColor || "#000000", fontColor: design.fontColor || "#000000", lineWidth: 2,
+      fontSize: 14, typography: { fontFamily: design.fontFamily, fontSizePt: design.fontSizePt, bold: design.bold } });
+    targetCtx.restore();
+  }
+  function strokeSegment(targetCtx, a, b) { targetCtx.moveTo(a[0], a[1]); targetCtx.lineTo(b[0], b[1]); }
+  function drawExplicit(targetCtx, targetCanvas, equation, program, tr) {
+    var inverse = program.kind === "explicit-x" || program.kind === "explicit-x-reversed";
+    var reversed = program.kind === "explicit-y-reversed" || program.kind === "explicit-x-reversed";
+    var span = inverse ? targetCanvas.height : targetCanvas.width;
+    var visibleCount = Math.max(1, state.equations.filter(function (item) { return item.visible; }).length);
+    var samples = Math.min(Math.max(500, Math.floor(180000 / visibleCount)), Math.max(400, Math.floor(span * 1.6)));
+    targetCtx.save(); targetCtx.beginPath(); targetCtx.rect(0, 0, targetCanvas.width, targetCanvas.height); targetCtx.clip();
+    targetCtx.beginPath(); targetCtx.strokeStyle = equation.color; targetCtx.lineWidth = state.lineWidth; targetCtx.globalAlpha = 1;
+    var started = false, prev = null;
+    for (var i = 0; i <= samples; i++) {
+      var pixel = i / samples * span;
+      var input = inverse ? (tr.oy - pixel) / tr.sy : (pixel - tr.ox) / tr.sx;
+      var output = inverse
+        ? (reversed ? program.evaluateLeft(0, input) : program.evaluateRight(0, input))
+        : (reversed ? program.evaluateLeft(input, 0) : program.evaluateRight(input, 0));
+      var point = inverse ? worldToScreen(output, input, tr) : worldToScreen(input, output, tr);
+      if (!Number.isFinite(output) || !Number.isFinite(point[0]) || !Number.isFinite(point[1]) || (prev && Math.abs(point[1] - prev[1]) > targetCanvas.height * 0.7)) {
+        started = false; prev = null; continue;
+      }
+      if (!started) { targetCtx.moveTo(point[0], point[1]); started = true; } else targetCtx.lineTo(point[0], point[1]);
+      prev = point;
+    }
+    targetCtx.stroke(); targetCtx.restore();
+  }
+  function implicitGridSize(targetCanvas) {
+    var visibleCount = Math.max(1, state.equations.filter(function (item) { return item.visible; }).length);
+    var budget = Math.max(900, Math.floor(90000 / visibleCount));
+    var aspect = targetCanvas.width / Math.max(1, targetCanvas.height);
+    var cols = Math.max(40, Math.min(240, Math.floor(Math.sqrt(budget * aspect))));
+    return { cols: cols, rows: Math.max(32, Math.min(220, Math.floor(budget / cols))) };
+  }
+  function contour(targetCtx, targetCanvas, program, tr, colorValue, dashed) {
+    var size = implicitGridSize(targetCanvas), cols = size.cols, rows = size.rows;
+    var dx = targetCanvas.width / cols, dy = targetCanvas.height / rows;
+    var values = new Float64Array((cols + 1) * (rows + 1));
+    function valueAt(ix, iy) {
+      var px = ix * dx, py = iy * dy, world = screenToWorld(px, py, tr);
+      return program.evaluate(world[0], world[1]);
+    }
+    for (var y = 0; y <= rows; y++) for (var x = 0; x <= cols; x++) values[y * (cols + 1) + x] = valueAt(x, y);
+    targetCtx.save(); targetCtx.beginPath(); targetCtx.rect(0, 0, targetCanvas.width, targetCanvas.height); targetCtx.clip();
+    targetCtx.beginPath(); targetCtx.strokeStyle = colorValue; targetCtx.lineWidth = state.lineWidth;
+    targetCtx.setLineDash(dashed ? [7, 5] : []);
+    function interpolate(x1, y1, v1, x2, y2, v2) {
+      var t = v1 === v2 ? .5 : v1 / (v1 - v2); t = Math.max(0, Math.min(1, t)); return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)];
+    }
+    for (y = 0; y < rows; y++) for (x = 0; x < cols; x++) {
+      var x0 = x * dx, y0 = y * dy, x1 = x0 + dx, y1 = y0 + dy;
+      var v0 = values[y * (cols + 1) + x], v1 = values[y * (cols + 1) + x + 1];
+      var v2 = values[(y + 1) * (cols + 1) + x + 1], v3 = values[(y + 1) * (cols + 1) + x];
+      if (![v0, v1, v2, v3].every(Number.isFinite)) continue;
+      var edges = [];
+      if ((v0 < 0) !== (v1 < 0)) edges.push(interpolate(x0, y0, v0, x1, y0, v1));
+      if ((v1 < 0) !== (v2 < 0)) edges.push(interpolate(x1, y0, v1, x1, y1, v2));
+      if ((v2 < 0) !== (v3 < 0)) edges.push(interpolate(x1, y1, v2, x0, y1, v3));
+      if ((v3 < 0) !== (v0 < 0)) edges.push(interpolate(x0, y1, v3, x0, y0, v0));
+      if (edges.length === 2) strokeSegment(targetCtx, edges[0], edges[1]);
+      else if (edges.length === 4) {
+        var centerWorld = screenToWorld((x0 + x1) / 2, (y0 + y1) / 2, tr);
+        var centerNegative = program.evaluate(centerWorld[0], centerWorld[1]) < 0;
+        if ((v0 < 0) === centerNegative) { strokeSegment(targetCtx, edges[0], edges[1]); strokeSegment(targetCtx, edges[2], edges[3]); }
+        else { strokeSegment(targetCtx, edges[0], edges[3]); strokeSegment(targetCtx, edges[1], edges[2]); }
+      }
+    }
+    targetCtx.stroke(); targetCtx.restore();
+  }
+  function shadeInequality(targetCtx, targetCanvas, program, tr, colorValue) {
+    var size = implicitGridSize(targetCanvas), cols = size.cols, rows = size.rows;
+    var dx = targetCanvas.width / cols, dy = targetCanvas.height / rows;
+    targetCtx.save(); targetCtx.beginPath(); targetCtx.rect(0, 0, targetCanvas.width, targetCanvas.height); targetCtx.clip();
+    targetCtx.fillStyle = colorValue; targetCtx.globalAlpha = .18;
+    for (var row = 0; row < rows; row++) {
+      var run = -1;
+      for (var col = 0; col <= cols; col++) {
+        var inside = false;
+        if (col < cols) {
+          var world = screenToWorld((col + .5) * dx, (row + .5) * dy, tr);
+          try { inside = program.test(world[0], world[1]); } catch (ignore) { inside = false; }
+        }
+        if (inside && run < 0) run = col;
+        if (!inside && run >= 0) { targetCtx.fillRect(run * dx, row * dy, (col - run) * dx + .25, dy + .25); run = -1; }
+      }
+    }
+    targetCtx.restore();
+  }
+  function drawEquation(targetCtx, targetCanvas, equation, program, tr) {
+    if (program.operator !== "=") shadeInequality(targetCtx, targetCanvas, program, tr, equation.color);
+    if (program.kind === "explicit-y" || program.kind === "explicit-y-reversed" || program.kind === "explicit-x" || program.kind === "explicit-x-reversed") drawExplicit(targetCtx, targetCanvas, equation, program, tr);
+    else contour(targetCtx, targetCanvas, program, tr, equation.color, program.operator === "<" || program.operator === ">");
+  }
+  function drawPoints(targetCtx, targetCanvas, tr) {
+    pointHitBoxes = [];
+    var placedLabels = [];
+    var design = getDesign();
+    targetCtx.save();
+    targetCtx.font = (Number(design.fontSizePt) || 11) * 1.333 + 'px "' + (design.fontFamily || "Times New Roman") + '", "Kalpurush", serif';
+    targetCtx.fillStyle = design.fontColor || "#111827";
+    state.points.forEach(function (point) {
+      if (!point.visible) return;
+      var x = Number(point.x), y = Number(point.y);
+      if (String(point.x).trim() === "" || String(point.y).trim() === "" || !Number.isFinite(x) || !Number.isFinite(y)) return;
+      var xy = worldToScreen(x, y, tr);
+      if (xy[0] < -8 || xy[0] > targetCanvas.width + 8 || xy[1] < -8 || xy[1] > targetCanvas.height + 8) return;
+      pointHitBoxes.push({ id: point.id, x: xy[0], y: xy[1] });
+      targetCtx.beginPath(); targetCtx.fillStyle = "#2563eb"; targetCtx.arc(xy[0], xy[1], 4.5, 0, Math.PI * 2); targetCtx.fill();
+      targetCtx.fillStyle = design.fontColor || "#111827";
+      var label = String(point.label || "") + " (" + x + ", " + y + ")";
+      var labelWidth = targetCtx.measureText ? targetCtx.measureText(label).width : label.length * 7;
+      var height = Math.max(12, (Number(design.fontSizePt) || 11) * 1.5);
+      var choices = [[8, -8], [8, height + 2], [-labelWidth - 8, -8], [-labelWidth - 8, height + 2], [10, -height - 5]];
+      var chosen = choices[0];
+      for (var c = 0; c < choices.length; c++) {
+        var candidate = { left: xy[0] + choices[c][0], top: xy[1] + choices[c][1] - height, right: xy[0] + choices[c][0] + labelWidth, bottom: xy[1] + choices[c][1] + 3 };
+        var overlaps = placedLabels.some(function (placed) { return candidate.left < placed.right && candidate.right > placed.left && candidate.top < placed.bottom && candidate.bottom > placed.top; });
+        if (!overlaps) { chosen = choices[c]; break; }
+      }
+      targetCtx.fillText(label, xy[0] + chosen[0], xy[1] + chosen[1]);
+      placedLabels.push({ left: xy[0] + chosen[0], top: xy[1] + chosen[1] - height, right: xy[0] + chosen[0] + labelWidth, bottom: xy[1] + chosen[1] + 3 });
+    });
+    targetCtx.restore();
+  }
+  function renderInto(targetCtx, targetCanvas, forceWhite) {
+    var tr = transform();
+    drawPaper(targetCtx, targetCanvas, tr, forceWhite);
+    drawAxes(targetCtx, targetCanvas, tr);
+    if (state.cleared) pointHitBoxes = [];
+    else {
+      state.equations.forEach(function (equation) {
+        if (!equation.visible || !compiled[equation.id]) return;
+        drawEquation(targetCtx, targetCanvas, equation, compiled[equation.id], tr);
+      });
+      drawPoints(targetCtx, targetCanvas, tr);
+    }
+  }
+  function showErrors(errors) {
+    state.equations.forEach(function (equation) {
+      var message = errors[equation.id] || "";
+      var element = controlsRoot.querySelector('[data-eq-error="' + equation.id + '"]');
+      if (element) element.textContent = message;
+    });
+    var feedback = controlsRoot.querySelector("[data-eq-feedback]");
+    if (feedback) feedback.textContent = Object.keys(errors).length ? "Check the equation errors above. Valid equations and points remain available." : "Graph updated. Trigonometric functions use radians.";
+  }
+  function plot() {
+    var nextCompiled = Object.create(null), errors = Object.create(null);
+    state.equations.forEach(function (equation) {
+      if (!equation.visible) return;
+      if (!equation.expression.trim()) { errors[equation.id] = "Enter an equation or hide/remove this row."; return; }
+      try { nextCompiled[equation.id] = math.compile(equation.expression); }
+      catch (error) { errors[equation.id] = error.message; }
+    });
+    compiled = nextCompiled;
+    lastErrors = errors;
+    showErrors(errors);
+    render();
+  }
+  function render() {
+    if (!ctx || !cv) return;
+    state.points.forEach(function (point) {
+      var error = "";
+      if (String(point.x).trim() === "" || String(point.y).trim() === "") error = "Enter both coordinates.";
+      else if (!Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) error = "Coordinates must be finite numbers.";
+      var errorNode = controlsRoot.querySelector('[data-pt-error="' + point.id + '"]');
+      if (errorNode) errorNode.textContent = error;
+    });
+    var zoomInput = document.getElementById("zoom");
+    if (zoomInput && document.activeElement !== zoomInput) zoomInput.value = String(state.zoom);
+    renderInto(ctx, cv, false);
+  }
+  function findById(items, id) { return items.find(function (item) { return item.id === id; }); }
+  function handleField(event) {
+    var target = event.target;
+    var equationField = target.closest && target.closest("[data-eq-field]");
+    if (equationField) {
+      var equation = findById(state.equations, equationField.getAttribute("data-eq-id"));
+      if (!equation) return;
+      var key = equationField.getAttribute("data-eq-field");
+      equation[key] = key === "visible" ? Boolean(equationField.checked) : equationField.value;
+      if (key === "visible") { state.cleared = false; plot(); }
+      else if (key === "color") render();
+      else {
+        var errorNode = controlsRoot.querySelector('[data-eq-error="' + equation.id + '"]');
+        if (errorNode) errorNode.textContent = "";
+        if (key === "expression") {
+          var feedback = controlsRoot.querySelector("[data-eq-feedback]");
+          if (feedback) feedback.textContent = "Equation edited. Select Plot / Update to redraw it.";
+        }
+      }
+      return;
+    }
+    var pointField = target.closest && target.closest("[data-pt-field]");
+    if (pointField) {
+      var point = findById(state.points, pointField.getAttribute("data-pt-id"));
+      if (!point) return;
+      var field = pointField.getAttribute("data-pt-field");
+      point[field] = field === "visible" ? Boolean(pointField.checked) : pointField.value;
+      if (field === "visible" || field === "x" || field === "y" || field === "label") { state.cleared = false; render(); }
+      return;
+    }
+    if (target && target.id === "zoom") { state.zoom = bounded(target.value, 1, .4, 3); render(); }
+  }
+  function handleAction(event) {
+    var target = event.target, action = target.closest && target.closest("[data-eq-action]");
+    if (action) {
+      var name = action.getAttribute("data-eq-action");
+      if (name === "clear-plot") { state.cleared = true; render(); return; }
+      if (name === "plot") { state.cleared = false; plot(); return; }
+      if (name === "add-equation") state.equations.push({ id: nextId("eq"), label: "Equation " + (state.equations.length + 1), expression: "", color: color(state.equations.length), visible: true });
+      if (name === "add-point") state.points.push({ id: nextId("pt"), label: String.fromCharCode(65 + state.points.length % 26), x: "0", y: "0", visible: true });
+      controlMarkup(); render(); return;
+    }
+    var equationDelete = target.closest && target.closest("[data-eq-delete]");
+    if (equationDelete) {
+      var id = equationDelete.getAttribute("data-eq-delete"); state.equations = state.equations.filter(function (item) { return item.id !== id; });
+      delete compiled[id]; state.cleared = false; controlMarkup(); plot(); return;
+    }
+    var pointDelete = target.closest && target.closest("[data-pt-delete]");
+    if (pointDelete) { var pointId = pointDelete.getAttribute("data-pt-delete"); state.points = state.points.filter(function (item) { return item.id !== pointId; }); controlMarkup(); render(); }
+  }
+  function eventPoint(event) {
+    var rect = cv.getBoundingClientRect();
+    return { x: (event.clientX - rect.left) * (cv.width / rect.width), y: (event.clientY - rect.top) * (cv.height / rect.height) };
+  }
+  function mouseDown(event) {
+    var position = eventPoint(event), nearest = null, distance = 100;
+    pointHitBoxes.forEach(function (box) { var d = Math.hypot(box.x - position.x, box.y - position.y); if (d < distance) { nearest = box; distance = d; } });
+    if (nearest) dragging = { mode: "point", id: nearest.id };
+    else dragging = { mode: "pan", x: position.x, y: position.y };
+  }
+  function mouseMove(event) {
+    if (!dragging) return;
+    var position = eventPoint(event), deltaX = position.x - dragging.x, deltaY = position.y - dragging.y;
+    if (dragging.mode === "pan") { state.panX += deltaX; state.panY += deltaY; dragging.x = position.x; dragging.y = position.y; }
+    else {
+      var tr = transform(), point = findById(state.points, dragging.id);
+      if (point) { var world = screenToWorld(position.x, position.y, tr); point.x = String(Number(world[0].toFixed(5))); point.y = String(Number(world[1].toFixed(5))); }
+    }
+    render();
+  }
+  function mouseUp() { if (!dragging) return; var wasPoint = dragging.mode === "point"; dragging = null; if (wasPoint) controlMarkup(); }
+  function wheel(event) {
+    event.preventDefault();
+    var position = eventPoint(event), before = screenToWorld(position.x, position.y, transform());
+    state.zoom = bounded(state.zoom * (event.deltaY > 0 ? .9 : 1.1), state.zoom, .4, 3);
+    var tr = transform();
+    state.panX = position.x - cv.width / 2 - before[0] * tr.sx;
+    state.panY = position.y - cv.height / 2 + before[1] * tr.sy;
+    render();
+  }
+  function fitView() { state.zoom = 1; state.panX = 0; state.panY = 0; render(); }
+  function currentState() { return JSON.parse(JSON.stringify(state)); }
+  function setState(saved) { restore(saved); controlMarkup(); plot(); }
+  function reset() { restore(null); controlMarkup(); plot(); fitView(); }
+  function exportGraph(format) {
+    if (lastErrors && Object.keys(lastErrors).length) throw new Error("Fix invalid equations before exporting.");
+    var stale = state.equations.some(function (equation) {
+      return equation.visible && equation.expression.trim() && (!compiled[equation.id] || compiled[equation.id].source !== equation.expression.trim());
+    });
+    if (stale) throw new Error("Select Plot / Update before exporting edited equations.");
+    render();
+    var canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, cv.width); canvas.height = Math.max(1, cv.height);
+    var exportContext = canvas.getContext("2d");
+    renderInto(exportContext, canvas, true);
+    var pngUrl = canvas.toDataURL("image/png");
+    if (format === "png") return pngUrl;
+    if (format !== "svg") throw new Error("Choose PNG or SVG.");
+    var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + canvas.width + '" height="' + canvas.height + '" viewBox="0 0 ' + canvas.width + " " + canvas.height + '"><rect width="100%" height="100%" fill="#FFFFFF"/><image x="0" y="0" width="' + canvas.width + '" height="' + canvas.height + '" href="' + pngUrl + '"/></svg>';
+    return new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  }
+  if (!math) throw new Error("The safe Equation Plotter parser was not loaded.");
+  state = defaultState();
+  controlMarkup();
+  listen(controlsRoot, "input", handleField);
+  listen(controlsRoot, "change", handleField);
+  listen(controlsRoot, "click", handleAction);
+  listen(cv, "mousedown", mouseDown);
+  listen(cv, "mousemove", mouseMove);
+  listen(window, "mouseup", mouseUp);
+  listen(cv, "wheel", wheel, { passive: false });
+  listen(document, "mf:graph-design-changed", render);
+  var instance = { render: render, resize: function (width, height, dpr) { if (canvasView.resize) canvasView.resize(width, height, dpr); render(); },
+    reset: reset, fitView: fitView, export: exportGraph, getState: currentState, setState: setState,
+    unmount: function () { while (cleanups.length) cleanups.pop()(); if (controlsRoot) controlsRoot.innerHTML = ""; } };
+  plot();
+  return instance;
 }
 
 window.MathForgeEquationPlotter = { mount: mount };

@@ -7,6 +7,7 @@
   var projectManager = null;
   var currentFileHandle = null;
   var fileQueue = Promise.resolve();
+  var fileWriteQueue = Promise.resolve();
   var managerReadyResolve;
   var managerReady = new Promise(function (resolve) {
     managerReadyResolve = resolve;
@@ -20,7 +21,7 @@
     console.error("[MathForge] " + message);
   }
 
-  async function writeFile(handle, contents) {
+  async function writeFileNow(handle, contents) {
     if (!handle || handle.kind !== "file" || typeof handle.createWritable !== "function") {
       throw new Error("The project file is not writable in this browser.");
     }
@@ -56,6 +57,12 @@
       }
       throw error;
     }
+  }
+
+  function writeFile(handle, contents) {
+    var operation = fileWriteQueue.then(function () { return writeFileNow(handle, contents); });
+    fileWriteQueue = operation.then(function () {}, function () {});
+    return operation;
   }
 
   async function processFileHandle(handle, manager, confirmReplace) {

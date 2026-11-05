@@ -132,13 +132,13 @@
     {
       id: "equation-plotter",
       name: "Equation Plotter",
-      description: "Functions and equations plotting",
+      description: "Plot equations, relations, inequalities, and coordinate points",
       icon: "ƒ",
       capabilities: [
-        "Continuous Function y = f(x)",
-        "Draggable Points Mode",
-        "Quadratic Bézier Splines",
-        "Graph Paper Ratio Controls"
+        "Safe equation and relation parsing",
+        "Explicit functions and inverse relations",
+        "Implicit conics and shaded inequalities",
+        "Multiple equations and coordinate points"
       ],
       mount: null,
       unmount: null,
@@ -179,6 +179,26 @@
         "Continuous Frequency Polygon",
         "Textbook Axis Break (/\\/\\)",
         "Midpoint Dot & Label Indicators"
+      ],
+      mount: null,
+      unmount: null,
+      resize: null,
+      render: null,
+      getState: null,
+      setState: null,
+      reset: null,
+      export: null
+    },
+    {
+      id: "pie-chart",
+      name: "Pie Chart",
+      description: "Accessible pie and donut charts with percentage and angle calculations",
+      icon: "◔",
+      capabilities: [
+        "Pie and donut chart modes",
+        "Bengali and English numerals",
+        "Exact and protractor-ready angles",
+        "Calculation tables and drawing steps"
       ],
       mount: null,
       unmount: null,
@@ -1248,6 +1268,11 @@
     destroy: destroy,
     getState: function () { return clone(state); },
     getActiveTool: function () { return state.activeTool ? getTool(state.activeTool) : null; },
+    exportActiveTool: function (format) {
+      var active = state.activeTool && registry[state.activeTool];
+      if (!active || typeof active.export !== "function") return null;
+      return active.export(format);
+    },
     selectTool: selectTool,
     registerTool: registerTool,
     unregisterTool: unregisterTool,

@@ -22,6 +22,8 @@
   <!-- Tool Stylesheets -->
   <link rel="stylesheet" href="assets/css/tools/coordinates-tool.css">
   <link rel="stylesheet" href="assets/css/tools/shared-graph-controls.css">
+  <link rel="stylesheet" href="assets/css/tools/equation-plotter-workspace.css">
+  <link rel="stylesheet" href="assets/css/tools/pie-chart.css">
 </head>
 
 <body class="mf-workspace-active">
@@ -191,6 +193,14 @@
             </span>
           </button>
 
+          <button class="mf-tool-card" type="button" data-tool-id="pie-chart" aria-pressed="false">
+            <span class="mf-tool-icon" aria-hidden="true">◔</span>
+            <span class="mf-tool-info">
+              <span class="mf-tool-name">Pie Chart</span>
+              <span class="mf-tool-desc">Pie and donut charts</span>
+            </span>
+          </button>
+
         </nav>
       </div>
 
@@ -261,7 +271,7 @@
             </div>
             <label class="mf-design-field">Canvas background <input id="mfDesignBackground" type="color" value="#ffffff"></label>
           </details>
-          <details class="mf-design-group" open>
+          <details class="mf-design-group" open data-mf-cartesian-only>
             <summary>Graph Paper &amp; Scale</summary>
             <label class="mf-design-check"><input id="mfDesignGridVisible" type="checkbox" checked> Show grid</label>
             <div class="mf-design-pair mf-axis-scale-pair">
@@ -301,7 +311,7 @@
             <label class="mf-design-field">Line / curve color <input id="mfDesignLineColor" type="color" value="#000000"></label>
             <label class="mf-design-field">Line thickness <input id="mfDesignLineWidth" type="range" min="1" max="8" step="0.5" value="3"></label>
           </details>
-          <details class="mf-design-group" open>
+          <details class="mf-design-group" open data-mf-cartesian-only>
             <summary>Zoom &amp; View</summary>
             <div class="mf-design-view-buttons">
               <button class="mf-tool-btn" type="button" id="mfZoomInBtn" disabled aria-disabled="true" title="Zoom in" aria-label="Zoom in">＋</button>
@@ -418,6 +428,8 @@
 <!-- Shared graph utilities used by standalone engines in the workspace -->
 <script src="assets/js/core/graph-typography.js"></script>
 <script src="assets/js/core/graph-scale.js"></script>
+<script src="assets/js/core/equation-math.js"></script>
+<script src="assets/js/core/pie-chart-calculations.js"></script>
 <script src="assets/js/core/graph-design-settings.js"></script>
 <script src="assets/js/common.js"></script>
 
@@ -431,6 +443,7 @@
 <script src="assets/js/tools/ogive-engine.js"></script>
 <script src="assets/js/tools/histogram-engine.js"></script>
 <script src="assets/js/tools/standalone-adapters.js"></script>
+<script src="assets/js/tools/pie-chart-engine.js"></script>
 <script src="assets/js/core/indexeddb-project-store.js"></script>
 <script src="assets/js/project-manager.js"></script>
 
